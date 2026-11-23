@@ -1,0 +1,67 @@
+{
+  "$schema": "https://raw.githubusercontent.com/CyberNova2333/cybernova-homepage/main/public/schemas/repo-meta.v1.json",
+  "schemaVersion": 1,
+  "slug": "frameflow",
+  "name": "FrameFlow",
+  "title": {
+    "zh": "FrameFlow · 跨浏览器 WebGPU/WebGL2 光流 AI 插帧训练与推理引擎",
+    "en": "FrameFlow · Cross-Browser WebGPU & WebGL2 Optical-Flow AI Frame Generation Engine"
+  },
+  "visibility": "public",
+  "status": "active",
+  "category": "media-engine",
+  "featured": false,
+  "repository": "https://github.com/CyberNova2333/frameflow",
+  "license": "AGPL-3.0-only",
+  "primaryLanguage": "Python",
+  "techStack": [
+    "PyTorch",
+    "WebGPU",
+    "WGSL",
+    "WebGL 2",
+    "GLSL",
+    "JavaScript"
+  ],
+  "tags": [
+    "frame-interpolation",
+    "optical-flow",
+    "webgpu",
+    "webgl2",
+    "browser-ai",
+    "emulator"
+  ],
+  "summary": {
+    "zh": "面向浏览器与网页模拟器（如 PVSSPW、PPSSPW）的轻量级光流 AI 插帧训练、蒸馏、导出与零依赖 WebGPU/WebGL2 双后端运行时。",
+    "en": "Lightweight optical-flow AI frame interpolation training, distillation, export, and zero-dependency WebGPU/WebGL2 dual-backend browser runtime for web emulators and canvas workloads."
+  },
+  "highlights": {
+    "zh": [
+      "零依赖、零 WASM 纯 ES Module 双后端运行时，优先 WebGPU Compute 并自动回退至 WebGL2 Fragment Shader 覆盖全浏览器",
+      "支持共享外部 GPUDevice / WebGL2RenderingContext 零拷贝接入 PVSSPW 与 PPSSPW，并内置无阻塞 2x/3x 帧节拍器",
+      "提供 FrameFlow-Std（775K 参数，1.52 MB）与蒸馏版 FrameFlow-Lite（222K 参数，434 KB）同构双档位，原生支持任意相位 t 与静态 HUD 保护",
+      "与 PyTorch 数值对齐达 68.88–72.55 dB PSNR，内置 100% 开放许可数据切分与云端 GPU 训练发版流水线"
+    ],
+    "en": [
+      "Zero-dependency, zero-WASM pure ES module runtime prioritizing WebGPU Compute with automatic WebGL2 Fragment Shader fallback across browsers",
+      "Supports zero-copy shared GPUDevice and WebGL2RenderingContext integration for PVSSPW and PPSSPW with a non-blocking 2x/3x frame pacer",
+      "Isomorphic FrameFlow-Std (775K params, 1.52 MB) and distilled FrameFlow-Lite (222K params, 434 KB) presets supporting arbitrary phase t and static HUD protection",
+      "Verified 68.88–72.55 dB PSNR numerical parity against PyTorch with clean open-licensed data preparation and automated cloud GPU release pipelines"
+    ]
+  },
+  "quickStart": [
+    "make test",
+    "make verify-runtime"
+  ],
+  "roadmap": {
+    "stage": "早期开发",
+    "stageEn": "Active Development",
+    "milestone": {
+      "zh": "已完成模型训练/蒸馏/导出框架、WebGPU+WebGL2 双后端数值对齐及云端 GPU 训练流水线，待完成全量权重训练并发布至 GitHub Release。",
+      "en": "Training/distillation/export stack, verified WebGPU+WebGL2 backends, and cloud GPU release pipelines are complete; full model weights training and GitHub Release publication pending."
+    }
+  },
+  "additionalTermsConsent": {
+    "CyberNova": true
+  },
+  "updatedAt": "2026-11-23"
+}

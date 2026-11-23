@@ -1,0 +1,198 @@
+name: Train & Publish Weights to GitHub Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_label:
+        description: "Runner 标签（自托管 GPU 机填 self-hosted；GitHub GPU Runner 填对应标签；快速冒烟填 ubuntu-latest）"
+        required: true
+        type: choice
+        default: "self-hosted"
+        options:
+          - "self-hosted"
+          - "ubuntu-latest"
+      data_tier:
+        description: "训练数据集规模"
+        required: true
+        type: choice
+        default: "starter"
+        options:
+          - "starter"
+          - "full"
+          - "synthetic"
+      train_presets:
+        description: "要训练的模型档位"
+        required: true
+        type: choice
+        default: "both"
+        options:
+          - "both"
+          - "std"
+          - "lite"
+      std_steps:
+        description: "FrameFlow-Std 训练步数"
+        required: true
+        type: string
+        default: "100000"
+      lite_steps:
+        description: "FrameFlow-Lite 蒸馏步数"
+        required: true
+        type: string
+        default: "50000"
+      batch_size:
+        description: "Batch Size（12GB GPU 建议 16；24-48GB GPU 建议 32）"
+        required: true
+        type: string
+        default: "16"
+      release_tag:
+        description: "发布到 GitHub Release 的标签名（留空则仅上传 Workflow Artifact）"
+        required: false
+        type: string
+        default: "weights-v0.1.0"
+      prerelease:
+        description: "标记为 Pre-release"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: train-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  train-and-publish:
+    name: Train (${{ inputs.train_presets }}) & Publish Release
+    runs-on: ${{ inputs.runner_label }}
+    timeout-minutes: 360
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12 (GitHub-hosted runner)
+        if: inputs.runner_label == 'ubuntu-latest'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prepare Python environment & dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -x ".venv/bin/python" ]; then
+            echo "PY=.venv/bin/python" >> "$GITHUB_ENV"
+          else
+            python3 -m venv .venv-ci
+            echo "PY=.venv-ci/bin/python" >> "$GITHUB_ENV"
+            if command -v nvidia-smi >/dev/null 2>&1; then
+              .venv-ci/bin/pip install --upgrade pip
+              .venv-ci/bin/pip install --index-url https://download.pytorch.org/whl/cu128 torch torchvision || \
+                .venv-ci/bin/pip install --index-url https://download.pytorch.org/whl/cu124 torch torchvision
+            else
+              .venv-ci/bin/pip install --upgrade pip
+              .venv-ci/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch
+            fi
+            .venv-ci/bin/pip install numpy pillow tqdm
+          fi
+          if ! command -v ffmpeg >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+          fi
+
+      - name: Verify hardware & run unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          $PY -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+          $PY -m unittest discover -s tests -v
+
+      - name: Prepare clean open-licensed dataset
+        if: inputs.data_tier != 'synthetic'
+        shell: bash
+        run: |
+          set -euo pipefail
+          $PY scripts/prepare_data.py --tier "${{ inputs.data_tier }}" --data-dir data --height 544
+
+      - name: Train FrameFlow-Std
+        if: inputs.train_presets == 'both' || inputs.train_presets == 'std'
+        shell: bash
+        run: |
+          set -euo pipefail
+          DATA_ARGS="--data data/clips/train --val-data data/clips/val"
+          if [ "${{ inputs.data_tier }}" = "synthetic" ]; then
+            DATA_ARGS="--synthetic"
+          fi
+          $PY scripts/train.py \
+            --preset std \
+            $DATA_ARGS \
+            --out checkpoints/std \
+            --steps "${{ inputs.std_steps }}" \
+            --batch "${{ inputs.batch_size }}" \
+            --crop 256 \
+            --lr 3e-4 \
+            --hud-prob 0.35 \
+            --val-every 2500 \
+            --save-every 5000 \
+            --auto-resume
+
+      - name: Distill FrameFlow-Lite
+        if: inputs.train_presets == 'both' || inputs.train_presets == 'lite'
+        shell: bash
+        run: |
+          set -euo pipefail
+          DATA_ARGS="--data data/clips/train --val-data data/clips/val"
+          if [ "${{ inputs.data_tier }}" = "synthetic" ]; then
+            DATA_ARGS="--synthetic"
+          fi
+          TEACHER_ARG=""
+          if [ -f checkpoints/std/best.pt ]; then
+            TEACHER_ARG="--teacher checkpoints/std/best.pt"
+          elif [ -f checkpoints/std/latest.pt ]; then
+            TEACHER_ARG="--teacher checkpoints/std/latest.pt"
+          fi
+          $PY scripts/train.py \
+            --preset lite \
+            $TEACHER_ARG \
+            $DATA_ARGS \
+            --out checkpoints/lite \
+            --steps "${{ inputs.lite_steps }}" \
+            --batch "${{ inputs.batch_size }}" \
+            --crop 256 \
+            --lr 4e-4 \
+            --hud-prob 0.35 \
+            --val-every 2500 \
+            --save-every 5000 \
+            --auto-resume
+
+      - name: Package release assets & checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.release_tag }}"
+          TAG="${TAG:-weights-${GITHUB_SHA::8}}"
+          $PY scripts/package_release.py \
+            --tag "$TAG" \
+            --std-dir checkpoints/std \
+            --lite-dir checkpoints/lite \
+            --data-manifest data/manifest.json \
+            --out dist
+          ls -lh dist/
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frameflow-weights-${{ inputs.release_tag || github.run_id }}
+          path: dist/
+          retention-days: 30
+
+      - name: Publish weights to GitHub Release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/publish_github_release.sh "${{ inputs.release_tag }}" dist "${{ github.repository }}"

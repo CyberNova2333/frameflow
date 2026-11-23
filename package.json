@@ -1,0 +1,30 @@
+{
+  "name": "frameflow",
+  "version": "0.1.0",
+  "description": "Cross-browser WebGPU & WebGL2 optical-flow AI frame generation for web emulators and canvas workloads",
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CyberNova2333/frameflow.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./runtime/types.d.ts",
+      "import": "./runtime/index.js"
+    },
+    "./runtime": {
+      "types": "./runtime/types.d.ts",
+      "import": "./runtime/index.js"
+    }
+  },
+  "files": [
+    "runtime/",
+    "LICENSE",
+    "LICENSE-ADDITIONAL_TERMS-zh-CN.md",
+    "LICENSE-ADDITIONAL_TERMS-en.md",
+    "IMPLEMENTATION-GUIDE.zh-en.md",
+    "ASSETS_LICENSES.md",
+    "README.md"
+  ]
+}

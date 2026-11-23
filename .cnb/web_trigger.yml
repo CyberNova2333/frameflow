@@ -1,0 +1,76 @@
+branch:
+  - reg: ^main$
+    buttons:
+      - name: 手动运行单元测试检查
+        description: 在 CPU 节点运行 Python 模型单元测试与浏览器双后端语法检查
+        event: web_trigger_check
+        groupName: 检查
+        permissions:
+          roles:
+            - owner
+            - master
+
+      - name: 48GB GPU 训练并发布权重
+        description: 在 CNB 48GB GPU 节点下载 CC-BY/Xiph 合规素材，训练 FrameFlow-Std 并蒸馏 FrameFlow-Lite，自动打包发布权重
+        event: web_trigger_train
+        groupName: 模型训练
+        permissions:
+          roles:
+            - owner
+            - master
+        inputs:
+          DATA_TIER:
+            name: 训练数据集规模
+            description: "starter (~727MB: BBB 60fps + Tears of Steel) / full (+ Sintel + Xiph 50-60fps) / synthetic (快速冒烟)"
+            type: select
+            required: true
+            default: "starter"
+            options:
+              - name: Starter (CC-BY ~727MB, 快速启动)
+                value: "starter"
+              - name: Full (CC-BY + Xiph 50/60fps 完整版)
+                value: "full"
+              - name: Synthetic (纯合成冒烟测试)
+                value: "synthetic"
+          TRAIN_PRESETS:
+            name: 训练模型档位
+            type: select
+            required: true
+            default: "both"
+            options:
+              - name: Std + 蒸馏 Lite (全部)
+                value: "both"
+              - name: 仅 FrameFlow-Std (775K)
+                value: "std"
+              - name: 仅 FrameFlow-Lite (222K)
+                value: "lite"
+          STD_STEPS:
+            name: FrameFlow-Std 训练步数
+            type: input
+            required: true
+            default: "100000"
+          LITE_STEPS:
+            name: FrameFlow-Lite 蒸馏步数
+            type: input
+            required: true
+            default: "50000"
+          BATCH_SIZE:
+            name: Batch Size（48GB L40 建议 32）
+            type: input
+            required: true
+            default: "32"
+          RELEASE_TAG:
+            name: Release 标签名（留空则不创建 Release）
+            type: input
+            required: false
+            default: "weights-v0.1.0"
+          PUBLISH_GITHUB_RELEASE:
+            name: 同时推送权重至 GitHub Release（需在 .cnb.yml 配置 GITHUB_TOKEN 密钥）
+            type: select
+            required: true
+            default: "false"
+            options:
+              - name: 否（仅发布到 CNB Release）
+                value: "false"
+              - name: 是（同时发布到 GitHub Release）
+                value: "true"

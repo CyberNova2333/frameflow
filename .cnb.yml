@@ -1,0 +1,203 @@
+# CNB 云原生构建流水线配置
+# 文档参考：
+# - 构建节点（含 48GB GPU）：https://docs.cnb.cool/zh/build/build-node.md
+# - 超时策略（最大 12h）：https://docs.cnb.cool/zh/build/timeout.md
+# - 手动触发按钮：https://docs.cnb.cool/zh/build/web-trigger.md
+# - 发布 Release：https://docs.cnb.cool/zh/build/internal-steps/git/release.md
+
+.check-python: &check-python
+  name: Python 模型与导出单元测试
+  image: python:3.12-slim
+  script: |
+    set -eu
+    pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
+    pip install --no-cache-dir numpy pillow tqdm
+    python -m unittest discover -s tests -v
+    python -c "from frameflow import FrameFlowNet, export_model; export_model(FrameFlowNet('std'), '.ci-export-test/std', 10); export_model(FrameFlowNet('lite'), '.ci-export-test/lite', 20)"
+
+.check-runtime: &check-runtime
+  name: 浏览器双后端运行时语法与加载测试
+  image: node:22-bookworm-slim
+  script: |
+    set -eu
+    for f in runtime/*.js; do
+      node --check "$f"
+    done
+    FRAMEFLOW_TEST_EXPORT_DIR=.ci-export-test node --test tests/test_runtime_node.mjs
+    rm -rf .ci-export-test
+
+main:
+  push:
+    - name: 代码与单元测试检查
+      runner:
+        tags: cnb:arch:amd64
+        cpus: 4
+      lock:
+        key: ci_main_push
+        cancel-in-progress: true
+      stages:
+        - *check-python
+        - *check-runtime
+
+  pull_request:
+    - name: PR 代码与单元测试检查
+      runner:
+        tags: cnb:arch:amd64
+        cpus: 4
+      stages:
+        - *check-python
+        - *check-runtime
+
+  web_trigger_check:
+    - name: 手动运行单元测试检查
+      runner:
+        tags: cnb:arch:amd64
+        cpus: 4
+      stages:
+        - *check-python
+        - *check-runtime
+
+  web_trigger_train:
+    - name: GPU 训练 FrameFlow 权重并发布
+      runner:
+        # 平台 48GB GPU 节点（固定 16 核 CPU，单次最长 18 小时）
+        tags: cnb:arch:amd64:gpu
+      docker:
+        image: pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
+        volumes:
+          # 同节点缓存已下载的 CC-BY / Xiph 原始开源素材，避免重复下载
+          - ./data/raw:copy-on-write
+      # 如需训练完成后自动同步写入 GitHub Release，请在 CNB 密钥仓库配置 GITHUB_TOKEN
+      # 并取消下方 imports 注释替换为你的密钥仓库地址：
+      # imports:
+      #   - https://cnb.cool/CyberNova2333/<your-secrets-repo>/-/blob/main/frameflow.yml
+      lock:
+        key: gpu_train_main
+        wait: true
+        cancel-in-wait: true
+      stages:
+        - name: 检查 GPU 环境并安装依赖
+          script: |
+            set -eu
+            nvidia-smi
+            apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends ffmpeg curl ca-certificates git
+            pip install --no-cache-dir -q pillow tqdm numpy
+            python -c "import torch; print('torch:', torch.__version__, 'cuda:', torch.cuda.is_available(), torch.cuda.get_device_name(0), 'bf16:', torch.cuda.is_bf16_supported())"
+            python -m unittest discover -s tests -v
+
+        - name: 准备合规开源训练素材
+          timeout: 2h
+          script: |
+            set -eu
+            TIER="${DATA_TIER:-starter}"
+            echo "[data] Preparing tier=${TIER}"
+            if [ "$TIER" = "synthetic" ]; then
+              echo "[data] Synthetic smoke mode selected; skipping download."
+            else
+              python scripts/prepare_data.py --tier "$TIER" --data-dir data --height 544
+            fi
+
+        - name: GPU 训练 FrameFlow-Std 与蒸馏 FrameFlow-Lite
+          timeout: 8h
+          script: |
+            set -eu
+            TIER="${DATA_TIER:-starter}"
+            PRESETS="${TRAIN_PRESETS:-both}"
+            STD_STEPS="${STD_STEPS:-100000}"
+            LITE_STEPS="${LITE_STEPS:-50000}"
+            BATCH_SIZE="${BATCH_SIZE:-32}"
+
+            DATA_ARGS="--data data/clips/train --val-data data/clips/val"
+            if [ "$TIER" = "synthetic" ]; then
+              DATA_ARGS="--synthetic"
+            fi
+
+            if [ "$PRESETS" = "both" ] || [ "$PRESETS" = "std" ]; then
+              echo "[train] Starting FrameFlow-Std (${STD_STEPS} steps, batch=${BATCH_SIZE})..."
+              python scripts/train.py \
+                --preset std \
+                $DATA_ARGS \
+                --out checkpoints/std \
+                --steps "$STD_STEPS" \
+                --batch "$BATCH_SIZE" \
+                --crop 256 \
+                --lr 3e-4 \
+                --hud-prob 0.35 \
+                --workers 8 \
+                --val-every 2500 \
+                --save-every 5000 \
+                --auto-resume
+            fi
+
+            if [ "$PRESETS" = "both" ] || [ "$PRESETS" = "lite" ]; then
+              TEACHER_ARG=""
+              if [ -f checkpoints/std/best.pt ]; then
+                TEACHER_ARG="--teacher checkpoints/std/best.pt"
+              elif [ -f checkpoints/std/latest.pt ]; then
+                TEACHER_ARG="--teacher checkpoints/std/latest.pt"
+              fi
+              echo "[train] Starting FrameFlow-Lite (${LITE_STEPS} steps, batch=${BATCH_SIZE}, ${TEACHER_ARG:-no teacher})..."
+              python scripts/train.py \
+                --preset lite \
+                $TEACHER_ARG \
+                $DATA_ARGS \
+                --out checkpoints/lite \
+                --steps "$LITE_STEPS" \
+                --batch "$BATCH_SIZE" \
+                --crop 256 \
+                --lr 4e-4 \
+                --hud-prob 0.35 \
+                --workers 8 \
+                --val-every 2500 \
+                --save-every 5000 \
+                --auto-resume
+            fi
+
+        - name: 打包权重、校验和与发布说明
+          script: |
+            set -eu
+            TAG="${RELEASE_TAG:-weights-${CNB_COMMIT_SHORT:-local}}"
+            GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
+            python scripts/package_release.py \
+              --tag "$TAG" \
+              --std-dir checkpoints/std \
+              --lite-dir checkpoints/lite \
+              --data-manifest data/manifest.json \
+              --out dist \
+              --runner-note "CNB Cloud GPU (${GPU_NAME})"
+            ls -lh dist/
+            cat dist/RELEASE_NOTES.md
+
+        - name: 创建或更新 CNB Release
+          if: '[ -n "${RELEASE_TAG:-}" ]'
+          type: git:release
+          options:
+            overlying: true
+            tag: ${RELEASE_TAG}
+            title: FrameFlow ${RELEASE_TAG}
+            descriptionFromFile: dist/RELEASE_NOTES.md
+            preRelease: true
+            latest: true
+
+        - name: 上传权重附件至 CNB Release
+          if: '[ -n "${RELEASE_TAG:-}" ]'
+          allowFailure: true
+          image: cnbcool/attachments:latest
+          settings:
+            tag: ${RELEASE_TAG}
+            attachments:
+              - "dist/*.tar.gz"
+              - "dist/*.json"
+              - "dist/*.bin"
+              - "dist/SHA256SUMS.txt"
+
+        - name: 同步发布权重至 GitHub Release（需配置 GITHUB_TOKEN）
+          if: '[ "${PUBLISH_GITHUB_RELEASE:-false}" = "true" ] && [ -n "${RELEASE_TAG:-}" ]'
+          script: |
+            set -eu
+            if [ -z "${GITHUB_TOKEN:-}" ]; then
+              echo "[warn] GITHUB_TOKEN 未注入，跳过 GitHub Release 同步（请参考 docs/TRAINING.md 配置 CNB 密钥仓库 imports）。"
+              exit 0
+            fi
+            bash scripts/publish_github_release.sh "${RELEASE_TAG}" dist "${GITHUB_REPO:-CyberNova2333/frameflow}"

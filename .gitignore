@@ -1,0 +1,16 @@
+.venv/
+.venv-ci/
+.ci-export-test/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+checkpoints/
+runs/
+exports/
+eval_outputs/
+dist/
+*.pt
+*.pth
+*.bin
+.DS_Store
