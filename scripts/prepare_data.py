@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -22,6 +23,24 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 import numpy as np
 from PIL import Image
+
+
+def resolve_ffmpeg() -> str:
+    """Locate ffmpeg binary (env FFMPEG_BIN -> PATH -> imageio-ffmpeg wheel for rootless notebooks)."""
+    env_bin = os.environ.get("FFMPEG_BIN")
+    if env_bin and Path(env_bin).exists():
+        return env_bin
+    sys_bin = shutil.which("ffmpeg")
+    if sys_bin:
+        return sys_bin
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception as exc:
+        raise RuntimeError(
+            "ffmpeg not found on PATH and imageio-ffmpeg is not installed. "
+            "Install ffmpeg or run: pip install imageio-ffmpeg"
+        ) from exc
 
 
 @dataclass(frozen=True)
@@ -118,14 +137,18 @@ def download_file(url: str, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     print(f"[download] {url} -> {dst}")
     subprocess.run(
-        ["curl", "-fL", "-C", "-", "--retry", "3", "--progress-bar", "-o", str(dst), url],
+        [
+            "curl", "-fL", "-C", "-",
+            "--retry", "5", "--retry-delay", "3", "--connect-timeout", "20",
+            "--progress-bar", "-o", str(dst), url,
+        ],
         check=True,
     )
 
 
 def resolve_video_file(src: VideoSource, raw_dir: Path) -> Path:
     archive = raw_dir / src.filename
-    if not archive.exists():
+    if not archive.exists() or (src.is_zip and not zipfile.is_zipfile(archive)):
         download_file(src.url, archive)
     if not src.is_zip:
         return archive
@@ -186,8 +209,9 @@ def slice_video_to_clips(
         vf = f"scale=-2:{target_height}:flags=lanczos"
         if stride_frames > 1:
             vf = f"select='not(mod(n\\,{stride_frames}))',{vf}"
+        ffmpeg_bin = resolve_ffmpeg()
         cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "warning",
+            ffmpeg_bin, "-hide_banner", "-loglevel", "warning",
             "-i", str(video_path),
             "-vf", vf,
             "-vsync", "0",

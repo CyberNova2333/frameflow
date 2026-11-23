@@ -54,7 +54,28 @@
 
 ---
 
-## 四、方式 C：本地 RTX GPU 训练并一键发布到 GitHub Release
+## 四、方式 C：通用云端 GPU Notebook（如超算互联网 / 曙光智算 RTX 4090 / L20、AutoDL 等）
+
+仓库提供了免 root、自动适配显存与 CPU 核数的一键脚本 [`scripts/run_cloud_train.sh`](../scripts/run_cloud_train.sh)（缺少系统 `ffmpeg` 时自动通过清华源安装纯 wheel `imageio-ffmpeg`，且自动复用容器内已有 PyTorch CUDA）：
+
+- **选卡建议**：FrameFlow 训练仅占 2–4 GB 显存，优先选 **NVIDIA RTX 4090 24GB**（比 L20 48GB 单卡训练快约 35–45%，整套 `Std 100K + Lite 50K` 约 **40–55 分钟**）；其次选 **L20 48GB**。不建议在异构 DTK 加速卡上从头折腾算子兼容。
+
+```bash
+git clone https://github.com/CyberNova2333/frameflow.git
+cd frameflow
+
+# 1. 可选：先跑 1 分钟合成冒烟，确认 GPU / PyTorch / 打包全链路通畅
+DATA_TIER=synthetic STD_STEPS=100 LITE_STEPS=100 bash scripts/run_cloud_train.sh
+
+# 2. 正式训练（starter ~727MB，或改 DATA_TIER=full；自动断点续训，产出直接落在 dist/）
+DATA_TIER=starter RELEASE_TAG=weights-v0.1.0 bash scripts/run_cloud_train.sh
+```
+
+> 若云端机房外网访问 `download.blender.org` 较慢，可在本机下好视频后通过 Notebook 文件管理器上传至 `data/raw/`（原文件名不变）或 `data/raw_local/`（配合 `DATA_TIER=local-only`），脚本会自动跳过下载直接切分训练。
+
+---
+
+## 五、方式 D：本地 RTX GPU 训练并一键发布到 GitHub Release
 
 插上电源后，在仓库根目录执行：
 
@@ -79,7 +100,7 @@ bash scripts/publish_github_release.sh weights-v0.1.0 dist CyberNova2333/framefl
 
 ---
 
-## 五、训练数据合规与切分机制
+## 六、训练数据合规与切分机制
 
 [`scripts/prepare_data.py`](../scripts/prepare_data.py) 仅收录可明确溯源的开放许可媒体（可用 `make data-list` / `make data-check` 核验）：
 
@@ -92,7 +113,7 @@ bash scripts/publish_github_release.sh weights-v0.1.0 dist CyberNova2333/framefl
 
 ---
 
-## 六、Release 产物清单
+## 七、制品与 Release 产物清单
 
 每次发布的 GitHub / CNB Release 包含以下文件：
 
