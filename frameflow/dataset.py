@@ -137,9 +137,11 @@ class SequenceFrameDataset(Dataset):
     def __len__(self) -> int:
         return self.samples_per_epoch if self.samples_per_epoch is not None else len(self.index)
 
-    def _load_bgr(self, path: Path) -> np.ndarray:
-        rgb = np.asarray(Image.open(path).convert("RGB"), dtype=np.uint8)
-        return rgb[:, :, ::-1].copy()
+    def _load_rgb(self, path: Path) -> np.ndarray:
+        with Image.open(path) as im:
+            if im.mode != "RGB":
+                im = im.convert("RGB")
+            return np.asarray(im, dtype=np.uint8)
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         rng = random.Random()
@@ -154,9 +156,9 @@ class SequenceFrameDataset(Dataset):
         mid_off = rng.randint(1, span - 1) if self.augment else span // 2
         t_val = float(mid_off) / float(span)
 
-        a = self._load_bgr(frames[fi])
-        gt = self._load_bgr(frames[fi + mid_off])
-        b = self._load_bgr(frames[fi + span])
+        a = self._load_rgb(frames[fi])
+        gt = self._load_rgb(frames[fi + mid_off])
+        b = self._load_rgb(frames[fi + span])
 
         # Random crop (resize up first if source smaller than crop_size)
         h, w, _ = a.shape
@@ -176,9 +178,10 @@ class SequenceFrameDataset(Dataset):
             y0 = (h - cs) // 2
             x0 = (w - cs) // 2
 
-        a = a[y0 : y0 + cs, x0 : x0 + cs]
-        gt = gt[y0 : y0 + cs, x0 : x0 + cs]
-        b = b[y0 : y0 + cs, x0 : x0 + cs]
+        # Crop FIRST and flip RGB -> BGR only on the small crop patch (saves 2x full-frame copies!)
+        a = a[y0 : y0 + cs, x0 : x0 + cs, ::-1].copy()
+        gt = gt[y0 : y0 + cs, x0 : x0 + cs, ::-1].copy()
+        b = b[y0 : y0 + cs, x0 : x0 + cs, ::-1].copy()
 
         if self.augment:
             if rng.random() < 0.5:

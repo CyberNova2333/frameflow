@@ -185,6 +185,7 @@ def main() -> None:
         pin_memory=(device.type == "cuda"),
         drop_last=True,
         persistent_workers=(args.workers > 0),
+        prefetch_factor=(4 if args.workers > 0 else None),
     )
 
     val_loader = None
