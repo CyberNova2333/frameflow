@@ -10,8 +10,8 @@ branch:
             - owner
             - master
 
-      - name: 48GB GPU 训练并发布权重
-        description: 在 CNB 48GB GPU 节点下载 CC-BY/Xiph 合规素材，训练 FrameFlow-Std 并蒸馏 FrameFlow-Lite，自动打包发布权重
+      - name: 48GB GPU 训练并发布权重制品
+        description: 在 CNB 48GB GPU 节点下载 CC-BY/Xiph 合规素材，训练 FrameFlow-Std 并蒸馏 FrameFlow-Lite，直接推送至 CNB OCI 制品库（免配密钥）
         event: web_trigger_train
         groupName: 模型训练
         permissions:
@@ -59,18 +59,18 @@ branch:
             type: input
             required: true
             default: "32"
-          RELEASE_TAG:
-            name: Release 标签名（留空则不创建 Release）
+          ARTIFACT_TAG:
+            name: 制品版本标签（推送至 OCI 制品库 weights:<tag> 并更新 latest）
             type: input
             required: false
             default: "weights-v0.1.0"
-          PUBLISH_GITHUB_RELEASE:
-            name: 同时推送权重至 GitHub Release（需在 .cnb.yml 配置 GITHUB_TOKEN 密钥）
+          ALSO_PUBLISH_RELEASE:
+            name: 是否同时创建 CNB Release 挂附件
             type: select
             required: true
             default: "false"
             options:
-              - name: 否（仅发布到 CNB Release）
+              - name: 否（仅推送 OCI 制品库）
                 value: "false"
-              - name: 是（同时发布到 GitHub Release）
+              - name: 是（同时创建 CNB Release）
                 value: "true"

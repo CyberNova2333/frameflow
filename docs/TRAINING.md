@@ -1,56 +1,56 @@
-# FrameFlow 训练与发版指南（CNB 48GB GPU / GitHub Actions / 本地 GPU）
+# FrameFlow 训练与制品发布指南（CNB 48GB GPU / GitHub Actions / 本地 GPU）
 
-本文档说明如何从零训练 100% 自主知识产权的 **GNU AGPLv3 + 附加条款（v1.6.7-r4）自训权重**（`FrameFlow-Std` 775K 参数与蒸馏版 `FrameFlow-Lite` 222K 参数），并将打包后的权重及五份许可合规文本自动发布到 **GitHub Release** 与 **CNB Release**。
+本文档说明如何从零训练 100% 自主知识产权的 **GNU AGPLv3 + 附加条款（v1.6.7-r4）自训权重**（`FrameFlow-Std` 775K 参数与蒸馏版 `FrameFlow-Lite` 222K 参数），并**免配任何跨平台密钥**，直接将打包后的权重及五份许可合规文本发布为各平台原生制品（**CNB OCI 制品库** / **GitHub Actions Artifact**），需要公开发版时再按需发到 **GitHub Release**。
 
 ---
 
-## 一、三种训练路径对比
+## 一、三种训练路径与制品去向对比
 
-| 方式 | 推荐度 | 典型算力 | `Std 100K + Lite 50K` 预计耗时 | 产物去向 |
+| 方式 | 推荐度 | 典型算力 | `Std 100K + Lite 50K` 预计耗时 | 默认制品去向（均免配额外密钥） |
 |---|---|---|---|---|
-| **1. CNB 云原生构建 GPU 节点** | **首选** | `cnb:arch:amd64:gpu`（16 核 + **48GB L40 级显存**） | **约 40–75 分钟**（`batch=32`, `bf16`） | CNB Release + 可选自动同步 **GitHub Release** |
-| **2. 本地 NVIDIA 独显** | 备选（适合加入私录游戏素材） | 如 RTX 5070 Ti 12GB（`bf16`） | **约 1.8–2.3 小时**（`batch=16`） | 本地 `dist/` → 一键脚本写入 **GitHub Release** |
-| **3. GitHub Actions（Self-Hosted GPU / 云端）** | 适合已有自托管 GPU Runner | 自托管 GPU Runner（或 `ubuntu-latest` 仅冒烟） | 视 Runner GPU 而定 | Workflow Artifact + 自动写入 **GitHub Release** |
+| **1. CNB 云原生构建 GPU 节点** | **首选** | `cnb:arch:amd64:gpu`（16 核 + **48GB L40 级显存**） | **约 40–75 分钟**（`batch=32`, `bf16`） | **CNB OCI 制品库** `oci.cnb.cool/cybernova2333/frameflow/weights:<tag>`（+ 可选 CNB Release） |
+| **2. 本地 NVIDIA 独显** | 备选（适合加入私录游戏素材） | 如 RTX 5070 Ti 12GB（`bf16`） | **约 1.8–2.3 小时**（`batch=16`） | 本地 `dist/` → 可按需传 **GitHub Release** |
+| **3. GitHub Actions（Self-Hosted GPU / 冒烟）** | 适合已有自托管 GPU Runner | 自托管 GPU Runner（或 `ubuntu-latest` 仅冒烟） | 视 Runner GPU 而定 | **GitHub Actions Artifact**（页面直下，保留 30 天；填 `release_tag` 时顺手建 GitHub Release） |
 
 > GitHub 免费公共 Runner（`ubuntu-latest`）无独立 GPU，仅适合在 `data_tier=synthetic`、步数设小（如 `100`）时做流水线冒烟；正式训练请使用 **CNB 48GB GPU**、**本地插电独显**或**挂载 GPU 的 Self-Hosted Runner**。
 
 ---
 
-## 二、方式 A：CNB 云原生构建 48GB GPU 一键训练（推荐）
+## 二、方式 A：CNB 云原生构建 48GB GPU 一键训练并直发 OCI 制品（推荐）
 
-仓库已内置 [`.cnb.yml`](../.cnb.yml) 与 [`.cnb/web_trigger.yml`](../.cnb/web_trigger.yml)：
+仓库已内置 [`.cnb.yml`](../.cnb.yml) 与 [`.cnb/web_trigger.yml`](../.cnb/web_trigger.yml)，**全程使用流水线内置临时 `CNB_TOKEN`，无需配置任何密钥仓库**：
 
 1. 打开 CNB 仓库的 **代码 → 分支详情页（`main`）**。
-2. 点击自定义按钮 **「48GB GPU 训练并发布权重」**（归属「模型训练」分组），在弹窗中选择参数：
+2. 点击自定义按钮 **「48GB GPU 训练并发布权重制品」**（归属「模型训练」分组），选择参数：
    - **`DATA_TIER`**：
      - `starter`（~727 MB：*Big Buck Bunny 60fps* + *Tears of Steel 720p*，CC-BY 3.0，快速出第一版）
      - `full`（在 `starter` 基础上增加 *Sintel 1080p* + Xiph/SVT 4 组 50/59.94fps 实拍序列，运动覆盖更全）
      - `synthetic`（零下载快速冒烟验证）
    - **`TRAIN_PRESETS`**：默认 `both`（先训 `FrameFlow-Std`，再用冻结教师蒸馏 `FrameFlow-Lite`）。
    - **`STD_STEPS` / `LITE_STEPS` / `BATCH_SIZE`**：默认 `100000` / `50000` / `32`（48GB 显存可轻松跑 `batch=32`）。
-   - **`RELEASE_TAG`**：例如 `weights-v0.1.0`；流水线会在训练完成后自动打包并发布到 CNB Release。
-3. **（可选）让 CNB 训完后直接写入 GitHub Release**：
-   - 在你的 CNB 私有密钥仓库中新建 `frameflow.yml`：
-     ```yaml
-     GITHUB_TOKEN: github_pat_你的细粒度Token（仅需该仓库 Contents: Read and write）
-     GITHUB_REPO: CyberNova2333/frameflow
-     ```
-   - 在 [`.cnb.yml`](../.cnb.yml) 的 `web_trigger_train` 下取消 `imports:` 注释并填入该密钥文件 URL。
-   - 触发按钮时将 `PUBLISH_GITHUB_RELEASE` 选为 **是**，CNB 会在打包完成后自动调用 [`scripts/publish_github_release.sh`](../scripts/publish_github_release.sh) 直接把权重、校验和与 `RELEASE_NOTES.md` 上传到 GitHub Release。
+   - **`ARTIFACT_TAG`**：例如 `weights-v0.1.0`；流水线会通过 `oras push` 直接推送至 CNB OCI 制品库，并同步更新 `:latest`。
+   - **`ALSO_PUBLISH_RELEASE`**：默认 `false`（仅发 OCI 制品）；如需同时在 CNB Release 页面点鼠标下载附件，可切换为 `true`。
+3. **拉取 CNB 权重制品（需要时可一键转存至 GitHub Release）**：
+   ```bash
+   # 在本地用 oras 拉取刚刚训完的制品到 dist/
+   oras pull oci.cnb.cool/cybernova2333/frameflow/weights:weights-v0.1.0 -o dist/
+   # 如需公开发布到 GitHub Release（使用本机已登录的 gh）：
+   bash scripts/publish_github_release.sh weights-v0.1.0 dist CyberNova2333/frameflow
+   ```
 
 ---
 
-## 三、方式 B：GitHub Actions 训练与直写 Release
+## 三、方式 B：GitHub Actions 训练并直发 Workflow Artifact
 
-仓库已内置 [`.github/workflows/train-and-release.yml`](../.github/workflows/train-and-release.yml)：
+仓库已内置 [`.github/workflows/train-and-release.yml`](../.github/workflows/train-and-release.yml)，**默认直接发布为 Actions Artifact 制品，免配任何密钥**：
 
-1. 打开 GitHub 仓库 → **Actions** → **Train & Publish Weights to GitHub Release** → **Run workflow**。
+1. 打开 GitHub 仓库 → **Actions** → **Train & Publish Weights Artifact** → **Run workflow**。
 2. 选择 `runner_label`：
    - 正式训练：选 `self-hosted`（需提前在有 NVIDIA GPU 的机器上注册 GitHub Actions Self-Hosted Runner）。
    - 流水线冒烟：选 `ubuntu-latest` + `data_tier: synthetic` + `std_steps: 40` + `lite_steps: 40`。
-3. 填写 `release_tag`（如 `weights-v0.1.0`）运行，完成后会自动：
-   - 上传 `dist/` 为 Workflow Artifact（保留 30 天）；
-   - 创建或更新对应的 **GitHub Release** 并挂载所有模型权重、压缩包与 `SHA256SUMS.txt`。
+3. 填写 `artifact_tag`（默认 `weights-v0.1.0`），`release_tag` 默认留空：
+   - 运行完成后直接在 Actions 运行详情页 **Artifacts** 区域下载 `frameflow-<tag>` 压缩包；
+   - 如同时填写了 `release_tag`，流水线还会使用内置 `github.token` 顺手创建或更新对应的 **GitHub Release**。
 
 ---
 

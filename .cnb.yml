@@ -58,7 +58,7 @@ main:
         - *check-runtime
 
   web_trigger_train:
-    - name: GPU 训练 FrameFlow 权重并发布
+    - name: GPU 训练 FrameFlow 权重并发布制品
       runner:
         # 平台 48GB GPU 节点（固定 16 核 CPU，单次最长 18 小时）
         tags: cnb:arch:amd64:gpu
@@ -67,10 +67,6 @@ main:
         volumes:
           # 同节点缓存已下载的 CC-BY / Xiph 原始开源素材，避免重复下载
           - ./data/raw:copy-on-write
-      # 如需训练完成后自动同步写入 GitHub Release，请在 CNB 密钥仓库配置 GITHUB_TOKEN
-      # 并取消下方 imports 注释替换为你的密钥仓库地址：
-      # imports:
-      #   - https://cnb.cool/CyberNova2333/<your-secrets-repo>/-/blob/main/frameflow.yml
       lock:
         key: gpu_train_main
         wait: true
@@ -154,10 +150,10 @@ main:
                 --auto-resume
             fi
 
-        - name: 打包权重、校验和与发布说明
+        - name: 打包权重、校验和与说明文档
           script: |
             set -eu
-            TAG="${RELEASE_TAG:-weights-${CNB_COMMIT_SHORT:-local}}"
+            TAG="${ARTIFACT_TAG:-weights-${CNB_COMMIT_SHORT:-local}}"
             GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n 1)"
             python scripts/package_release.py \
               --tag "$TAG" \
@@ -169,35 +165,43 @@ main:
             ls -lh dist/
             cat dist/RELEASE_NOTES.md
 
-        - name: 创建或更新 CNB Release
-          if: '[ -n "${RELEASE_TAG:-}" ]'
+        - name: 发布权重至 CNB OCI 制品库（免配密钥）
+          image: ghcr.io/oras-project/oras:latest
+          script: |
+            set -eu
+            TAG="${ARTIFACT_TAG:-weights-${CNB_COMMIT_SHORT:-local}}"
+            REPO_REF="${CNB_OCI_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}/weights"
+            if [ -n "${CNB_TOKEN:-}" ]; then
+              oras login "${CNB_OCI_REGISTRY}" -u "${CNB_TOKEN_USER_NAME:-cnb}" -p "${CNB_TOKEN}"
+            fi
+            cd dist
+            set --
+            for f in *; do
+              [ -f "$f" ] && set -- "$@" "$f"
+            done
+            oras push "${REPO_REF}:${TAG}" "$@"
+            oras tag "${REPO_REF}:${TAG}" latest
+            echo "[artifact] Published OCI artifact: ${REPO_REF}:${TAG} (and :latest)"
+
+        - name: 可选：创建或更新 CNB Release
+          if: '[ "${ALSO_PUBLISH_RELEASE:-false}" = "true" ] && [ -n "${ARTIFACT_TAG:-}" ]'
           type: git:release
           options:
             overlying: true
-            tag: ${RELEASE_TAG}
-            title: FrameFlow ${RELEASE_TAG}
+            tag: ${ARTIFACT_TAG}
+            title: FrameFlow ${ARTIFACT_TAG}
             descriptionFromFile: dist/RELEASE_NOTES.md
             preRelease: true
             latest: true
 
-        - name: 上传权重附件至 CNB Release
-          if: '[ -n "${RELEASE_TAG:-}" ]'
+        - name: 可选：上传权重附件至 CNB Release
+          if: '[ "${ALSO_PUBLISH_RELEASE:-false}" = "true" ] && [ -n "${ARTIFACT_TAG:-}" ]'
           allowFailure: true
           image: cnbcool/attachments:latest
           settings:
-            tag: ${RELEASE_TAG}
+            tag: ${ARTIFACT_TAG}
             attachments:
               - "dist/*.tar.gz"
               - "dist/*.json"
               - "dist/*.bin"
               - "dist/SHA256SUMS.txt"
-
-        - name: 同步发布权重至 GitHub Release（需配置 GITHUB_TOKEN）
-          if: '[ "${PUBLISH_GITHUB_RELEASE:-false}" = "true" ] && [ -n "${RELEASE_TAG:-}" ]'
-          script: |
-            set -eu
-            if [ -z "${GITHUB_TOKEN:-}" ]; then
-              echo "[warn] GITHUB_TOKEN 未注入，跳过 GitHub Release 同步（请参考 docs/TRAINING.md 配置 CNB 密钥仓库 imports）。"
-              exit 0
-            fi
-            bash scripts/publish_github_release.sh "${RELEASE_TAG}" dist "${GITHUB_REPO:-CyberNova2333/frameflow}"

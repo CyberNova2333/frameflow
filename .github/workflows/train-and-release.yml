@@ -1,10 +1,10 @@
-name: Train & Publish Weights to GitHub Release
+name: Train & Publish Weights Artifact
 
 on:
   workflow_dispatch:
     inputs:
       runner_label:
-        description: "Runner 标签（自托管 GPU 机填 self-hosted；GitHub GPU Runner 填对应标签；快速冒烟填 ubuntu-latest）"
+        description: "Runner 标签（自托管 GPU 机填 self-hosted；快速冒烟填 ubuntu-latest）"
         required: true
         type: choice
         default: "self-hosted"
@@ -44,13 +44,18 @@ on:
         required: true
         type: string
         default: "16"
-      release_tag:
-        description: "发布到 GitHub Release 的标签名（留空则仅上传 Workflow Artifact）"
-        required: false
+      artifact_tag:
+        description: "制品版本标签（用于命名 Workflow Artifact 与权重压缩包）"
+        required: true
         type: string
         default: "weights-v0.1.0"
+      release_tag:
+        description: "可选：同时发布至 GitHub Release 的标签名（留空则仅发布 Actions 制品）"
+        required: false
+        type: string
+        default: ""
       prerelease:
-        description: "标记为 Pre-release"
+        description: "若发布 GitHub Release，是否标记为 Pre-release"
         required: true
         type: boolean
         default: true
@@ -169,7 +174,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${{ inputs.release_tag }}"
+          TAG="${{ inputs.release_tag || inputs.artifact_tag }}"
           TAG="${TAG:-weights-${GITHUB_SHA::8}}"
           $PY scripts/package_release.py \
             --tag "$TAG" \
@@ -179,10 +184,10 @@ jobs:
             --out dist
           ls -lh dist/
 
-      - name: Upload workflow artifacts
+      - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: frameflow-weights-${{ inputs.release_tag || github.run_id }}
+          name: frameflow-${{ inputs.release_tag || inputs.artifact_tag || github.run_id }}
           path: dist/
           retention-days: 30
 
