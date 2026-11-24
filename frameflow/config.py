@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Additional Terms: see LICENSE-ADDITIONAL_TERMS-zh-CN.md (v1.6.7-r4)
-"""Model architecture presets for FrameFlow (FlyHighFG-compatible graph format).
+"""Model architecture presets for GameFI (FrameFlow optical-flow frame interpolation).
 
 All hidden channel counts are multiples of 4 to enable optimal RGBA16F vec4
 texture packing in WebGL2 fragment shaders as well as vectorized WebGPU kernels.
@@ -72,7 +72,7 @@ class ModelConfig:
 PRESETS: dict[str, ModelConfig] = {
     # 1:1 isomorphic to FlyHighFG (775,811 params, ~1.52 MB f16)
     "std": ModelConfig(
-        name="FrameFlow-Std",
+        name="GameFI-Std",
         c8=36,
         c16=72,
         cc=96,
@@ -86,7 +86,7 @@ PRESETS: dict[str, ModelConfig] = {
     ),
     # Distilled lightweight preset (222,179 params, ~434 KB f16) for WebGL2 & mobile GPUs
     "lite": ModelConfig(
-        name="FrameFlow-Lite",
+        name="GameFI-Lite",
         c8=20,
         c16=40,
         cc=48,

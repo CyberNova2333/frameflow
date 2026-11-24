@@ -30,12 +30,12 @@ on:
           - "std"
           - "lite"
       std_steps:
-        description: "FrameFlow-Std 训练步数"
+        description: "GameFI-Std 训练步数"
         required: true
         type: string
         default: "100000"
       lite_steps:
-        description: "FrameFlow-Lite 蒸馏步数"
+        description: "GameFI-Lite 蒸馏步数"
         required: true
         type: string
         default: "50000"
@@ -119,7 +119,7 @@ jobs:
           set -euo pipefail
           $PY scripts/prepare_data.py --tier "${{ inputs.data_tier }}" --data-dir data --height 544
 
-      - name: Train FrameFlow-Std
+      - name: Train GameFI-Std
         if: inputs.train_presets == 'both' || inputs.train_presets == 'std'
         shell: bash
         run: |
@@ -141,7 +141,7 @@ jobs:
             --save-every 5000 \
             --auto-resume
 
-      - name: Distill FrameFlow-Lite
+      - name: Distill GameFI-Lite
         if: inputs.train_presets == 'both' || inputs.train_presets == 'lite'
         shell: bash
         run: |

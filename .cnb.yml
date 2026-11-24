@@ -94,7 +94,7 @@ main:
               python scripts/prepare_data.py --tier "$TIER" --data-dir data --height 544
             fi
 
-        - name: GPU 训练 FrameFlow-Std 与蒸馏 FrameFlow-Lite
+        - name: GPU 训练 GameFI-Std 与蒸馏 GameFI-Lite
           timeout: 8h
           script: |
             set -eu
@@ -110,7 +110,7 @@ main:
             fi
 
             if [ "$PRESETS" = "both" ] || [ "$PRESETS" = "std" ]; then
-              echo "[train] Starting FrameFlow-Std (${STD_STEPS} steps, batch=${BATCH_SIZE})..."
+              echo "[train] Starting GameFI-Std (${STD_STEPS} steps, batch=${BATCH_SIZE})..."
               python scripts/train.py \
                 --preset std \
                 $DATA_ARGS \
@@ -133,7 +133,7 @@ main:
               elif [ -f checkpoints/std/latest.pt ]; then
                 TEACHER_ARG="--teacher checkpoints/std/latest.pt"
               fi
-              echo "[train] Starting FrameFlow-Lite (${LITE_STEPS} steps, batch=${BATCH_SIZE}, ${TEACHER_ARG:-no teacher})..."
+              echo "[train] Starting GameFI-Lite (${LITE_STEPS} steps, batch=${BATCH_SIZE}, ${TEACHER_ARG:-no teacher})..."
               python scripts/train.py \
                 --preset lite \
                 $TEACHER_ARG \

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Additional Terms: see LICENSE-ADDITIONAL_TERMS-zh-CN.md (v1.6.7-r4)
-"""Loss functions for FrameFlow training and FrameFlow-Std -> FrameFlow-Lite distillation.
+"""Loss functions for GameFI training and GameFI-Std -> GameFI-Lite distillation.
 
 Combines:
   - Multi-scale Charbonnier + Laplacian pyramid reconstruction loss
@@ -195,3 +195,6 @@ class FrameFlowLoss(nn.Module):
 
         metrics["total"] = float(total.detach())
         return total, metrics
+
+
+GameFILoss = FrameFlowLoss

@@ -3,7 +3,7 @@
 # Additional Terms: see LICENSE-ADDITIONAL_TERMS-zh-CN.md (v1.6.7-r4)
 """Verify FrameFlow's self-authored WebGPU AND WebGL2 browser runtimes against PyTorch.
 
-Exports FrameFlow-Std (775K) and FrameFlow-Lite (222K) with non-trivial weights,
+Exports GameFI-Std (775K) and GameFI-Lite (222K) with non-trivial weights,
 computes PyTorch golden outputs on real 960x544 game frames at t=0.5 and t=1/3,
 runs BOTH `runtime/webgpu-backend.js` and `runtime/webgl2-backend.js` in headless Edge 157,
 and checks exact numerical parity (PSNR >= 50 dB) + real-world timing (full & 480x288 & PSP 480x272).
@@ -107,7 +107,8 @@ def main() -> None:
     jobs_path.write_text(json.dumps({"frameA": str(frame_a), "frameB": str(frame_b), "jobs": jobs}, indent=2) + "\n")
 
     print("[verify] Running headless Edge 157 dual-backend verification (WebGPU + WebGL2) on Intel Xe-LPG...")
-    env = dict(**os.environ, VK_DRIVER_FILES="/usr/share/vulkan/icd.d/intel_icd.json")
+    env = os.environ.copy()
+    env.setdefault("VK_DRIVER_FILES", "/usr/share/vulkan/icd.d/intel_icd.json")
     subprocess.run(["node", str(ROOT / "scripts/verify_backends.mjs"), str(jobs_path)], check=True, env=env)
 
     rep = json.loads((out_dir / "report.json").read_text())

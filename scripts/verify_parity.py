@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
 # Additional Terms: see LICENSE-ADDITIONAL_TERMS-zh-CN.md (v1.6.7-r4)
-"""End-to-end parity verification: PyTorch FrameFlowNet vs WebGPU runtime.
+"""End-to-end parity verification: PyTorch GameFINet (FrameFlowNet) vs WebGPU runtime.
 
-1. Instantiates both `std` (FrameFlow-Std, 775K) and `lite` (FrameFlow-Lite, 222K).
+1. Instantiates both `std` (GameFI-Std, 775K) and `lite` (GameFI-Lite, 222K).
 2. Initializes residual heads with small deterministic non-zero weights so every op path is exercised.
 3. Exports each preset to `(graph.json, model.json, model.bin)`.
 4. Runs PyTorch forward on a real 960x544 game frame pair at both t=0.5 and t=1/3.
@@ -108,7 +108,8 @@ def main() -> None:
 
     print("[parity] Running headless Edge 157 WebGPU parity check on Intel Xe-LPG...")
     cmd = ["node", str(ROOT / "scripts/verify_parity.mjs"), str(jobs_path)]
-    env = dict(**__import__("os").environ, VK_DRIVER_FILES="/usr/share/vulkan/icd.d/intel_icd.json")
+    env = __import__("os").environ.copy()
+    env.setdefault("VK_DRIVER_FILES", "/usr/share/vulkan/icd.d/intel_icd.json")
     subprocess.run(cmd, check=True, env=env)
 
     print("\n=== PyTorch vs WebGPU Numerical Parity Results ===")

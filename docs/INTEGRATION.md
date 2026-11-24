@@ -21,8 +21,8 @@ if (!caps.supported) {
 
 | 后端 | 适用浏览器 | 推荐模型档位 | 推荐内部分辨率 |
 |---|---|---|---|
-| **WebGPU**（`f16` 自动降 `f32`） | Chrome / Edge、Safari 26+（macOS/iOS 26+）、Win/Mac Firefox | 独显选 `FrameFlow-Std`，核显/手机选 `FrameFlow-Lite`（或 `Std` + `480×288`） | `960×544` 输出用 `[480, 288]`；独显可用 `'frame'` |
-| **WebGL2**（`RGBA16F` + MRT） | Firefox Linux/Android、iOS 15–18 Safari、旧手机 WebView、**PPSSPW 同上下文** | **`FrameFlow-Lite`**（434 KB） | PSP `1x (480×272)` 用 `'frame'`；`960×544` 用 `[480, 288]` |
+| **WebGPU**（`f16` 自动降 `f32`） | Chrome / Edge、Safari 26+（macOS/iOS 26+）、Win/Mac Firefox | 独显选 `GameFI-Std`，核显/手机选 `GameFI-Lite`（或 `Std` + `480×288`） | `960×544` 输出用 `[480, 288]`；独显可用 `'frame'` |
+| **WebGL2**（`RGBA16F` + MRT） | Firefox Linux/Android、iOS 15–18 Safari、旧手机 WebView、**PPSSPW 同上下文** | **`GameFI-Lite`**（434 KB） | PSP `1x (480×272)` 用 `'frame'`；`960×544` 用 `[480, 288]` |
 
 ---
 
@@ -31,10 +31,10 @@ if (!caps.supported) {
 权重发布到 GitHub Release 后，可将解压出来的 `graph.json`、`model.json`、`model.bin` 托管至同源静态目录或 CDN（推荐开启 `gzip`/`brotli` 与 `Cache-Control: immutable`）：
 
 ```js
-const model = await loadModelFromUrl(engine, '/assets/models/frameflow-lite/');
+const model = await loadModelFromUrl(engine, '/assets/models/gamefi-lite/');
 ```
 
-如直接加载单文件命名（Release 中的 `frameflow-lite-graph.json` / `frameflow-lite-model.json` / `frameflow-lite-model.bin`），也可自行 `fetch` 后传入 `engine.loadModel(graphText, manifestText, binBytes)`。
+如直接加载单文件命名（Release 中的 `gamefi-lite-graph.json` / `gamefi-lite-model.json` / `gamefi-lite-model.bin`），也可自行 `fetch` 后传入 `engine.loadModel(graphText, manifestText, binBytes)`。
 
 ---
 

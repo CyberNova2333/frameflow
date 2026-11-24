@@ -1,24 +1,26 @@
 # FrameFlow
 
-**FrameFlow** 是一款面向浏览器与网页模拟器（如 PVSSPW、PPSSPW）的跨浏览器光流 AI 插帧训练与推理引擎，采用 **统一紧凑权重格式（`graph.json` + `model.json` + `model.bin`）** 与 **零依赖、零 WASM 的 WebGPU / WebGL2 双后端自动降级运行时**。
+**FrameFlow** 是面向浏览器与网页模拟器（如 PVSSPW、PPSSPW）的跨浏览器实时画面工作流套件，旗下包含 **GameFI**（光流 AI 插帧）与 **GameSR**（2× AI 实时超分）两个模型家族，采用 **统一紧凑权重格式（`graph.json` + `model.json` + `model.bin`）** 与 **零依赖、零 WASM 的 WebGPU / WebGL2 双后端自动降级运行时**。
 
 ## 模型规格与实测基准
 
 所有隐藏层通道数均为 4 的倍数，同时适配 WebGPU 向量化计算与 WebGL2 `RGBA16F` 四通道纹理打包：
 
-| 预设 | 模型名 | 参数量 | f16 权重体积 | 典型定位 |
-|---|---|---:|---:|---|
-| `std` | `FrameFlow-Std` | 775,811 | ~1.52 MB | 桌面核显/独显 WebGPU、旗舰移动 WebGPU |
-| `lite` | `FrameFlow-Lite` | 222,179 | ~434 KB | WebGL2 全浏览器兜底、中端移动端、PSP `1x/2x` |
+| 任务 | 预设 | 模型名 | 参数量 | f16 权重体积 | 典型定位 |
+|---|---|---|---:|---:|---|
+| 插帧 (`interp`) | `std` | `GameFI-Std` | 775,811 | ~1.52 MB | 桌面核显/独显 WebGPU、旗舰移动 WebGPU |
+| 插帧 (`interp`) | `lite` | `GameFI-Lite` | 222,179 | ~434 KB | WebGL2 全浏览器兜底、中端移动端、PSP `1x/2x` |
+| 超分 (`sr`, 2×) | `sr_std` | `GameSR-Std` | 11,548 | ~22.6 KB | 高画质 2× 去锯齿与轮廓锐化，可单开或接在 GameFI 之后 |
+| 超分 (`sr`, 2×) | `sr_lite` | `GameSR-Lite` | 6,936 | ~13.5 KB | 超轻量 2× 超分（WebGPU / WebGL2 高帧率推荐） |
 
 **Intel Xe-LPG 核显（无头 Edge 157，带真实 GPU 完成栅栏，离线电池态）实测对齐与耗时**：
 
 | 后端（零 WASM 纯 JS/Shader） | 模型 | PyTorch 对齐 PSNR（`t=0.5` / `t=1/3`） | 最大像素差 | `960×544`（`int 480×288`） | PSP `480×272` |
 |---|---|---:|---:|---:|---:|
-| **WebGPU**（`f16` 自动降 `f32`） | `FrameFlow-Std` | **71.42 / 71.52 dB** | 1 / 255 | **19.11 ms**（12.13 + 6.71） | — |
-| **WebGPU**（`f16` 自动降 `f32`） | `FrameFlow-Lite` | **72.11 / 72.55 dB** | 1 / 255 | **8.67 ms**（4.95 + 3.72） | **7.85 ms** |
-| **WebGL2**（`RGBA16F` + MRT） | `FrameFlow-Std` | **69.04 / 68.88 dB** | 1–2 / 255 | **26.92 ms** | — |
-| **WebGL2**（`RGBA16F` + MRT） | `FrameFlow-Lite` | **71.05 / 71.33 dB** | 1 / 255 | **16.59 ms** | **9.25 ms** |
+| **WebGPU**（`f16` 自动降 `f32`） | `GameFI-Std` | **71.42 / 71.52 dB** | 1 / 255 | **19.11 ms**（12.13 + 6.71） | — |
+| **WebGPU**（`f16` 自动降 `f32`） | `GameFI-Lite` | **72.11 / 72.55 dB** | 1 / 255 | **8.67 ms**（4.95 + 3.72） | **7.85 ms** |
+| **WebGL2**（`RGBA16F` + MRT） | `GameFI-Std` | **69.04 / 68.88 dB** | 1–2 / 255 | **26.92 ms** | — |
+| **WebGL2**（`RGBA16F` + MRT） | `GameFI-Lite` | **71.05 / 71.33 dB** | 1 / 255 | **16.59 ms** | **9.25 ms** |
 
 核心特性：
 - **全浏览器覆盖**：优先 WebGPU Compute（Chrome/Edge/Safari 26+/Win&Mac Firefox），自动回退 WebGL2 Fragment Shaders（Firefox Linux/Android、iOS 15–18 Safari、WebView）；不支持浮点/半浮点渲染目标时优雅关闭，不做抢占模拟器 CPU 的软推理。
@@ -99,7 +101,7 @@ frameflow/
 仓库不提交二进制权重文件（`.bin` / `.pt`），双端流水线**均免配跨平台密钥，训练完直接发布为本平台原生制品**（需要对外发版时再按需挂到 GitHub Release）：
 
 1. **CNB 48GB GPU 云端一键训练 → OCI 制品库（推荐，算力高于移动端独显）**：
-   - 在 CNB 仓库 `main` 分支详情页点击自定义按钮 **「48GB GPU 训练并发布权重制品」**（由 [`.cnb/web_trigger.yml`](.cnb/web_trigger.yml) 与 [`.cnb.yml`](.cnb.yml) 驱动），自动在 `cnb:arch:amd64:gpu`（16 核 + 48GB 显存）上训练 `FrameFlow-Std` 并蒸馏 `FrameFlow-Lite`，直接通过 `oras push` 推送到 **CNB OCI 制品库** `oci.cnb.cool/cybernova2333/frameflow/weights:<tag>`（并更新 `:latest`；可按需勾选同时创建 CNB Release）。
+   - 在 CNB 仓库 `main` 分支详情页点击自定义按钮 **「48GB GPU 训练并发布权重制品」**（由 [`.cnb/web_trigger.yml`](.cnb/web_trigger.yml) 与 [`.cnb.yml`](.cnb.yml) 驱动），自动在 `cnb:arch:amd64:gpu`（16 核 + 48GB 显存）上训练 `GameFI-Std` 并蒸馏 `GameFI-Lite`，直接通过 `oras push` 推送到 **CNB OCI 制品库** `oci.cnb.cool/cybernova2333/frameflow/weights:<tag>`（并更新 `:latest`；可按需勾选同时创建 CNB Release）。
 2. **GitHub Actions 训练 → Workflow Artifact（可选 GitHub Release）**：
    - 在 GitHub **Actions → Train & Publish Weights Artifact** 手动触发 [`.github/workflows/train-and-release.yml`](.github/workflows/train-and-release.yml)（支持自托管 GPU Runner 或 `ubuntu-latest` 合成冒烟），训练完成后默认直接上传 **Actions Artifact 制品**（保留 30 天），填写 `release_tag` 时顺手创建 GitHub Release。
 3. **本地 RTX 独显训练 + 一键发版**：
@@ -116,10 +118,10 @@ make verify-runtime
 make data-starter
 # 可选：把自录 60fps 游戏/动漫视频放进 data/raw_local/ 后执行 make data-local
 
-# 2. 训练 FrameFlow-Std（100K 步，RTX 5070 Ti bf16 约 1.2–1.6 小时，支持断点续训）
+# 2. 训练 GameFI-Std（100K 步，RTX 5070 Ti bf16 约 1.2–1.6 小时，支持断点续训）
 make train-std
 
-# 3. 从 FrameFlow-Std 蒸馏 FrameFlow-Lite（50K 步，约 35–45 分钟）
+# 3. 从 GameFI-Std 蒸馏 GameFI-Lite（50K 步，约 35–45 分钟）
 make train-lite
 
 # 4. 在真实游戏连续运动帧上生成对比图，并打包发布到 GitHub Release

@@ -4,8 +4,8 @@
   "slug": "frameflow",
   "name": "FrameFlow",
   "title": {
-    "zh": "FrameFlow · 跨浏览器 WebGPU/WebGL2 光流 AI 插帧训练与推理引擎",
-    "en": "FrameFlow · Cross-Browser WebGPU & WebGL2 Optical-Flow AI Frame Generation Engine"
+    "zh": "FrameFlow · 跨浏览器 WebGPU/WebGL2 光流插帧与超分训练推理套件",
+    "en": "FrameFlow · Cross-Browser WebGPU & WebGL2 AI Frame Interpolation and Super-Resolution Suite"
   },
   "visibility": "public",
   "status": "active",
@@ -24,6 +24,7 @@
   ],
   "tags": [
     "frame-interpolation",
+    "super-resolution",
     "optical-flow",
     "webgpu",
     "webgl2",
@@ -31,21 +32,21 @@
     "emulator"
   ],
   "summary": {
-    "zh": "面向浏览器与网页模拟器（如 PVSSPW、PPSSPW）的轻量级光流 AI 插帧训练、蒸馏、导出与零依赖 WebGPU/WebGL2 双后端运行时。",
-    "en": "Lightweight optical-flow AI frame interpolation training, distillation, export, and zero-dependency WebGPU/WebGL2 dual-backend browser runtime for web emulators and canvas workloads."
+    "zh": "面向浏览器与网页模拟器（如 PVSSPW、PPSSPW）的帧流工作流套件（含 GameFI 光流插帧与 GameSR 2× 超分），提供训练、蒸馏、导出与零依赖 WebGPU/WebGL2 双后端运行时。",
+    "en": "Browser and web-emulator neural video processing suite featuring GameFI optical-flow frame interpolation and GameSR 2x super-resolution with zero-dependency WebGPU/WebGL2 runtimes."
   },
   "highlights": {
     "zh": [
       "零依赖、零 WASM 纯 ES Module 双后端运行时，优先 WebGPU Compute 并自动回退至 WebGL2 Fragment Shader 覆盖全浏览器",
-      "支持共享外部 GPUDevice / WebGL2RenderingContext 零拷贝接入 PVSSPW 与 PPSSPW，并内置无阻塞 2x/3x 帧节拍器",
-      "提供 FrameFlow-Std（775K 参数，1.52 MB）与蒸馏版 FrameFlow-Lite（222K 参数，434 KB）同构双档位，原生支持任意相位 t 与静态 HUD 保护",
-      "与 PyTorch 数值对齐达 68.88–72.55 dB PSNR，内置 100% 开放许可数据切分与云端 GPU 训练发版流水线"
+      "支持共享外部 GPUDevice / WebGL2RenderingContext 零拷贝接入 PVSSPW 与 PPSSPW，并内置无阻塞 2x/3x 帧节拍器与可串联超分流程",
+      "提供 GameFI-Std（775K，1.52 MB）/ GameFI-Lite（222K，434 KB）插帧双档位与 GameSR-Std（11.5K，22.6 KB）/ GameSR-Lite（6.9K，13.5 KB）2× 超分双档位",
+      "与 PyTorch 数值对齐均达 > 60 dB PSNR，内置 100% 开放许可数据切分与云端 GPU 训练发版流水线"
     ],
     "en": [
       "Zero-dependency, zero-WASM pure ES module runtime prioritizing WebGPU Compute with automatic WebGL2 Fragment Shader fallback across browsers",
-      "Supports zero-copy shared GPUDevice and WebGL2RenderingContext integration for PVSSPW and PPSSPW with a non-blocking 2x/3x frame pacer",
-      "Isomorphic FrameFlow-Std (775K params, 1.52 MB) and distilled FrameFlow-Lite (222K params, 434 KB) presets supporting arbitrary phase t and static HUD protection",
-      "Verified 68.88–72.55 dB PSNR numerical parity against PyTorch with clean open-licensed data preparation and automated cloud GPU release pipelines"
+      "Supports zero-copy shared GPUDevice and WebGL2RenderingContext integration for PVSSPW and PPSSPW with a non-blocking 2x/3x frame pacer and chainable super-resolution",
+      "Includes GameFI-Std (775K, 1.52 MB) / GameFI-Lite (222K, 434 KB) interpolation models and GameSR-Std (11.5K, 22.6 KB) / GameSR-Lite (6.9K, 13.5 KB) 2x SR models",
+      "Verified > 60 dB PSNR numerical parity against PyTorch with clean open-licensed data preparation and automated cloud GPU release pipelines"
     ]
   },
   "quickStart": [

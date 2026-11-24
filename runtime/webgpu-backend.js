@@ -7,7 +7,7 @@
  *   - Automatically selects f16 (`shader-f16`) when supported, seamlessly falls back to f32
  *   - Accepts an existing `GPUDevice` (`{ device }`) for zero-copy sharing with PVSSPW/Vitaslop
  *   - Encodes entire `pair()` or `mid()` stage into a single GPUCommandBuffer submission
- *   - Exact 1:1 numerical parity with PyTorch FrameFlowNet & FrameFlow WebGL2 backend
+ *   - Exact 1:1 numerical parity with PyTorch GameFINet / FrameFlowNet & FrameFlow WebGL2 backend
  */
 import { align32, compilePlan, evalFilmMlp, parseModel } from './loader.js';
 
@@ -123,6 +123,101 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (a3 < 0.0) { a3 *= f32(prelu[oc3]); }
   }
 
+  let outPlane = p.oh * p.ow;
+  let outIdx = oy * p.ow + ox;
+  outp[oc0 * outPlane + outIdx] = F(a0);
+  if (oc0 + 1u < p.cout) { outp[(oc0 + 1u) * outPlane + outIdx] = F(a1); }
+  if (oc0 + 2u < p.cout) { outp[(oc0 + 2u) * outPlane + outIdx] = F(a2); }
+  if (oc0 + 3u < p.cout) { outp[(oc0 + 3u) * outPlane + outIdx] = F(a3); }
+}
+`;
+
+  // Shared-memory tiled stride-1 Conv2D (+ optional PReLU) reducing DRAM reads by ~20x on high-res inputs
+  const conv3x3Tiled = `${hdr}
+struct P { cin: u32, cout: u32, ih: u32, iw: u32, oh: u32, ow: u32, stride: u32, act: u32 };
+@group(0) @binding(0) var<storage, read> inp: array<F>;
+@group(0) @binding(1) var<storage, read> weight: array<F>;
+@group(0) @binding(2) var<storage, read> bias: array<F>;
+@group(0) @binding(3) var<storage, read> prelu: array<F>;
+@group(0) @binding(4) var<storage, read_write> outp: array<F>;
+@group(0) @binding(5) var<uniform> p: P;
+
+var<workgroup> inTile: array<vec4<f32>, 100>;
+var<workgroup> wTile: array<vec4<f32>, 36>;
+
+@compute @workgroup_size(8, 8, 1)
+fn main(
+  @builtin(workgroup_id) wid: vec3<u32>,
+  @builtin(local_invocation_id) lid: vec3<u32>,
+  @builtin(global_invocation_id) gid: vec3<u32>,
+) {
+  let ox = gid.x; let oy = gid.y; let oc0 = wid.z * 4u;
+  let bx = wid.x * 8u; let by = wid.y * 8u;
+  let tid = lid.y * 8u + lid.x;
+
+  let oc1 = min(oc0 + 1u, p.cout - 1u);
+  let oc2 = min(oc0 + 2u, p.cout - 1u);
+  let oc3 = min(oc0 + 3u, p.cout - 1u);
+
+  var a0 = f32(bias[oc0]);
+  var a1 = f32(bias[oc1]);
+  var a2 = f32(bias[oc2]);
+  var a3 = f32(bias[oc3]);
+
+  let inPlane = p.ih * p.iw;
+  let wStride = p.cin * 9u;
+  let baseTile = lid.y * 10u + lid.x;
+
+  for (var icBase: u32 = 0u; icBase < p.cin; icBase += 4u) {
+    for (var idx: u32 = tid; idx < 100u; idx += 64u) {
+      let ty = idx / 10u;
+      let tx = idx % 10u;
+      let sy = i32(by + ty) - 1;
+      let sx = i32(bx + tx) - 1;
+      var v = vec4<f32>(0.0);
+      if (sy >= 0 && sy < i32(p.ih) && sx >= 0 && sx < i32(p.iw)) {
+        let sp = u32(sy) * p.iw + u32(sx);
+        if (icBase + 0u < p.cin) { v.x = f32(inp[(icBase + 0u) * inPlane + sp]); }
+        if (icBase + 1u < p.cin) { v.y = f32(inp[(icBase + 1u) * inPlane + sp]); }
+        if (icBase + 2u < p.cin) { v.z = f32(inp[(icBase + 2u) * inPlane + sp]); }
+        if (icBase + 3u < p.cin) { v.w = f32(inp[(icBase + 3u) * inPlane + sp]); }
+      }
+      inTile[idx] = v;
+    }
+    if (tid < 36u) {
+      let oSlot = tid / 9u;
+      let tap = tid % 9u;
+      let oc = min(oc0 + oSlot, p.cout - 1u);
+      let wb = oc * wStride;
+      var wv = vec4<f32>(0.0);
+      if (icBase + 0u < p.cin) { wv.x = f32(weight[wb + (icBase + 0u) * 9u + tap]); }
+      if (icBase + 1u < p.cin) { wv.y = f32(weight[wb + (icBase + 1u) * 9u + tap]); }
+      if (icBase + 2u < p.cin) { wv.z = f32(weight[wb + (icBase + 2u) * 9u + tap]); }
+      if (icBase + 3u < p.cin) { wv.w = f32(weight[wb + (icBase + 3u) * 9u + tap]); }
+      wTile[tid] = wv;
+    }
+    workgroupBarrier();
+
+    for (var ky: u32 = 0u; ky < 3u; ky++) {
+      for (var kx: u32 = 0u; kx < 3u; kx++) {
+        let tap = ky * 3u + kx;
+        let xv = inTile[baseTile + ky * 10u + kx];
+        a0 += dot(xv, wTile[tap]);
+        a1 += dot(xv, wTile[9u + tap]);
+        a2 += dot(xv, wTile[18u + tap]);
+        a3 += dot(xv, wTile[27u + tap]);
+      }
+    }
+    workgroupBarrier();
+  }
+
+  if (ox >= p.ow || oy >= p.oh || oc0 >= p.cout) { return; }
+  if (p.act != 0u) {
+    if (a0 < 0.0) { a0 *= f32(prelu[oc0]); }
+    if (a1 < 0.0) { a1 *= f32(prelu[oc1]); }
+    if (a2 < 0.0) { a2 *= f32(prelu[oc2]); }
+    if (a3 < 0.0) { a3 *= f32(prelu[oc3]); }
+  }
   let outPlane = p.oh * p.ow;
   let outIdx = oy * p.ow + ox;
   outp[oc0 * outPlane + outIdx] = F(a0);
@@ -536,6 +631,43 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+  const renderSr = `${hdr}
+struct P { inW: u32, inH: u32, outW: u32, outH: u32 };
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var<storage, read> delta: array<F>;
+@group(0) @binding(2) var dstTex: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(3) var<uniform> p: P;
+
+fn fetchSrc(x: i32, y: i32) -> vec3<f32> {
+  return textureLoad(src, vec2<i32>(clamp(x, 0, i32(p.inW) - 1), clamp(y, 0, i32(p.inH) - 1)), 0).rgb;
+}
+
+@compute @workgroup_size(8, 8, 1)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let ox = gid.x; let oy = gid.y;
+  if (ox >= p.outW || oy >= p.outH) { return; }
+  let fx = (f32(ox) + 0.5) * (f32(p.inW) / f32(p.outW)) - 0.5;
+  let fy = (f32(oy) + 0.5) * (f32(p.inH) / f32(p.outH)) - 0.5;
+  let x0 = i32(floor(fx)); let y0 = i32(floor(fy));
+  let wx = fx - f32(x0); let wy = fy - f32(y0);
+  let base = mix(
+    mix(fetchSrc(x0, y0), fetchSrc(x0 + 1, y0), wx),
+    mix(fetchSrc(x0, y0 + 1), fetchSrc(x0 + 1, y0 + 1), wx),
+    wy
+  );
+  let lry = min(oy >> 1u, p.inH - 1u);
+  let lrx = min(ox >> 1u, p.inW - 1u);
+  let sub = (oy & 1u) * 2u + (ox & 1u);
+  let plane = p.inH * p.inW;
+  let off = lry * p.inW + lrx;
+  let dr = f32(delta[(8u + sub) * plane + off]);
+  let dg = f32(delta[(4u + sub) * plane + off]);
+  let db = f32(delta[(0u + sub) * plane + off]);
+  let col = clamp(base + vec3<f32>(dr, dg, db), vec3<f32>(0.0), vec3<f32>(1.0));
+  textureStore(dstTex, vec2<i32>(i32(ox), i32(oy)), vec4<f32>(col, 1.0));
+}
+`;
+
   const blit = `
 struct V { @builtin(position) p: vec4<f32>, @location(0) uv: vec2<f32> };
 @vertex fn vs(@builtin(vertex_index) i: u32) -> V {
@@ -550,7 +682,7 @@ struct V { @builtin(position) p: vec4<f32>, @location(0) uv: vec2<f32> };
 }
 `;
 
-  return { texIn, conv3x3, interp, avgpool, copyCh, unary, binary, luma, sad, warp, filmMod, convex, blendW, renderTex, blit };
+  return { texIn, conv3x3, conv3x3Tiled, interp, avgpool, copyCh, unary, binary, luma, sad, warp, filmMod, convex, blendW, renderTex, renderSr, blit };
 }
 
 export async function probeWebGPU(powerPreference = 'high-performance') {
@@ -590,6 +722,7 @@ export class WebGPUEngine {
     this.pipes = {
       texIn: makePipe(src.texIn),
       conv3x3: makePipe(src.conv3x3),
+      conv3x3Tiled: makePipe(src.conv3x3Tiled),
       interp: makePipe(src.interp),
       avgpool: makePipe(src.avgpool),
       copyCh: makePipe(src.copyCh),
@@ -602,6 +735,7 @@ export class WebGPUEngine {
       convex: makePipe(src.convex),
       blendW: makePipe(src.blendW),
       renderTex: makePipe(src.renderTex),
+      renderSr: makePipe(src.renderSr),
     };
     this.blitSrc = src.blit;
     this.blitPipes = new Map();
@@ -663,16 +797,59 @@ export class WebGPUEngine {
   loadModel(graph, manifest, bin) {
     const data = parseModel(graph, manifest, bin);
     const weightBufs = new Map();
-    for (const [name, f32] of data.weightsF32.entries()) {
-      weightBufs.set(name, this._uploadWeights(f32, data.weightsU16.get(name)));
+    const srConvWeights = new Map();
+    if (data.meta.task === 'sr') {
+      const visitSr = (ops) => {
+        for (const op of ops) {
+          if ((op.op === 'conv' || op.op === 'conv2d') && Array.isArray(op.w)) {
+            const key = op.w.join('|');
+            if (!srConvWeights.has(key)) {
+              const wF32 = data.weightsF32.get(op.w[0]);
+              const bF32 = data.weightsF32.get(op.w[1]);
+              const pF32 = op.w[2] ? data.weightsF32.get(op.w[2]) : null;
+              const [cout, cin] = data.shapes.get(op.w[0]);
+              const gIn = Math.ceil(cin / 4);
+              const gOut = Math.ceil(cout / 4);
+              const packed = new Float32Array(gOut * 9 * gIn * 4 * 4);
+              for (let oc = 0; oc < cout; oc++) {
+                const go = oc >> 2;
+                const laneO = oc & 3;
+                for (let ic = 0; ic < cin; ic++) {
+                  const gi = ic >> 2;
+                  const laneI = ic & 3;
+                  const baseSrc = (oc * cin + ic) * 9;
+                  for (let tap = 0; tap < 9; tap++) {
+                    const idx = (((go * 9 + tap) * gIn + gi) * 4 + laneO) * 4 + laneI;
+                    packed[idx] = wF32[baseSrc + tap];
+                  }
+                }
+              }
+              const wBuf = this.device.createBuffer({
+                size: Math.max(16, packed.byteLength),
+                usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+              });
+              this.device.queue.writeBuffer(wBuf, 0, packed);
+              srConvWeights.set(key, { wBuf, bF32, pF32, gIn, gOut, cin, cout });
+            }
+          }
+        }
+      };
+      visitSr(data.graph.ops);
+    } else {
+      for (const [name, f32] of data.weightsF32.entries()) {
+        weightBufs.set(name, this._uploadWeights(f32, data.weightsU16.get(name)));
+      }
     }
     const modelObj = {
       data,
       weightBufs,
+      srConvWeights,
       info: () => data.info(),
       destroy: () => {
         for (const b of weightBufs.values()) b.destroy();
         weightBufs.clear();
+        for (const cw of srConvWeights.values()) cw.wBuf.destroy();
+        srConvWeights.clear();
         this.models.delete(modelObj);
       },
     };
@@ -681,7 +858,138 @@ export class WebGPUEngine {
   }
 
   createSession(model, options) {
+    if (model.data.meta.task === 'sr') {
+      return new WebGPUSrSession(this, model, options);
+    }
     return new WebGPUSession(this, model, options);
+  }
+
+  _getSrPipes() {
+    if (this._srPipes) return this._srPipes;
+    const dev = this.device;
+    const vs = `
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  var pos = array<vec2<f32>, 3>(vec2<f32>(-1.0, -1.0), vec2<f32>(3.0, -1.0), vec2<f32>(-1.0, 3.0));
+  return vec4<f32>(pos[i], 0.0, 1.0);
+}`;
+    const texInFs = `${vs}
+@group(0) @binding(0) var srcTex: texture_2d<f32>;
+@fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  let c = textureLoad(srcTex, vec2<i32>(i32(pos.x), i32(pos.y)), 0).rgb;
+  return vec4<f32>(c.b, c.g, c.r, 0.0);
+}`;
+    const makeConvFs = (mrt) => {
+      const outs = [];
+      const accs = [];
+      const inner = [];
+      const actLines = [];
+      const retLines = [];
+      for (let m = 0; m < mrt; m++) {
+        outs.push(`@location(${m}) o${m}: vec4<f32>,`);
+        accs.push(`var acc${m} = p.bias[${m}];`);
+        inner.push(`
+          let wb${m} = (((p.outBase + ${m}u) * 9u + tap) * p.gIn + gi) * 4u;
+          acc${m} += vec4<f32>(dot(xv, w[wb${m}]), dot(xv, w[wb${m} + 1u]), dot(xv, w[wb${m} + 2u]), dot(xv, w[wb${m} + 3u]));
+        `);
+        actLines.push(`if (p.act != 0u) { acc${m} = max(acc${m}, vec4<f32>(0.0)) + min(acc${m}, vec4<f32>(0.0)) * p.prelu[${m}]; }`);
+        retLines.push(`out.o${m} = acc${m};`);
+      }
+      return `${vs}
+struct P {
+  inW: u32, inH: u32, gIn: u32, outBase: u32,
+  act: u32, _a: u32, _b: u32, _c: u32,
+  bias: array<vec4<f32>, 4>,
+  prelu: array<vec4<f32>, 4>,
+};
+struct Out { ${outs.join('\n  ')} };
+@group(0) @binding(0) var inTex: texture_2d_array<f32>;
+@group(0) @binding(1) var<storage, read> w: array<vec4<f32>>;
+@group(0) @binding(2) var<uniform> p: P;
+@fragment fn fs(@builtin(position) pos: vec4<f32>) -> Out {
+  let op = vec2<i32>(i32(pos.x), i32(pos.y));
+  ${accs.join('\n  ')}
+  for (var ky: i32 = 0; ky < 3; ky++) {
+    let sy = op.y + ky - 1;
+    if (sy < 0 || sy >= i32(p.inH)) { continue; }
+    for (var kx: i32 = 0; kx < 3; kx++) {
+      let sx = op.x + kx - 1;
+      if (sx < 0 || sx >= i32(p.inW)) { continue; }
+      let tap = u32(ky * 3 + kx);
+      for (var gi: u32 = 0u; gi < p.gIn; gi++) {
+        let xv = textureLoad(inTex, vec2<i32>(sx, sy), i32(gi), 0);
+        ${inner.join('\n')}
+      }
+    }
+  }
+  ${actLines.join('\n  ')}
+  var out: Out;
+  ${retLines.join('\n  ')}
+  return out;
+}`;
+    };
+    const makeAddFs = (mrt) => {
+      const outs = [];
+      const body = [];
+      for (let m = 0; m < mrt; m++) {
+        outs.push(`@location(${m}) o${m}: vec4<f32>,`);
+        body.push(`out.o${m} = textureLoad(ta, p, i32(u.base + ${m}u), 0) + textureLoad(tb, p, i32(u.base + ${m}u), 0);`);
+      }
+      return `${vs}
+struct U { base: u32, _a: u32, _b: u32, _c: u32 };
+struct Out { ${outs.join('\n  ')} };
+@group(0) @binding(0) var ta: texture_2d_array<f32>;
+@group(0) @binding(1) var tb: texture_2d_array<f32>;
+@group(0) @binding(2) var<uniform> u: U;
+@fragment fn fs(@builtin(position) pos: vec4<f32>) -> Out {
+  let p = vec2<i32>(i32(pos.x), i32(pos.y));
+  var out: Out;
+  ${body.join('\n  ')}
+  return out;
+}`;
+    };
+    const renderSrFs = `${vs}
+struct P { inW: u32, inH: u32, outW: u32, outH: u32 };
+@group(0) @binding(0) var srcTex: texture_2d<f32>;
+@group(0) @binding(1) var deltaTex: texture_2d_array<f32>;
+@group(0) @binding(2) var<uniform> p: P;
+fn fetchSrc(x: i32, y: i32) -> vec3<f32> {
+  return textureLoad(srcTex, vec2<i32>(clamp(x, 0, i32(p.inW) - 1), clamp(y, 0, i32(p.inH) - 1)), 0).rgb;
+}
+@fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  let ox = u32(pos.x); let oy = u32(pos.y);
+  let fx = (f32(ox) + 0.5) * (f32(p.inW) / f32(p.outW)) - 0.5;
+  let fy = (f32(oy) + 0.5) * (f32(p.inH) / f32(p.outH)) - 0.5;
+  let x0 = i32(floor(fx)); let y0 = i32(floor(fy));
+  let wx = fx - f32(x0); let wy = fy - f32(y0);
+  let base = mix(
+    mix(fetchSrc(x0, y0), fetchSrc(x0 + 1, y0), wx),
+    mix(fetchSrc(x0, y0 + 1), fetchSrc(x0 + 1, y0 + 1), wx),
+    wy
+  );
+  let lrx = i32(min(ox >> 1u, p.inW - 1u));
+  let lry = i32(min(oy >> 1u, p.inH - 1u));
+  let sub = (oy & 1u) * 2u + (ox & 1u);
+  let b4 = textureLoad(deltaTex, vec2<i32>(lrx, lry), 0, 0);
+  let g4 = textureLoad(deltaTex, vec2<i32>(lrx, lry), 1, 0);
+  let r4 = textureLoad(deltaTex, vec2<i32>(lrx, lry), 2, 0);
+  let deltaRgb = vec3<f32>(r4[sub], g4[sub], b4[sub]);
+  return vec4<f32>(clamp(base + deltaRgb, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
+}`;
+    const makePipe = (code, formats) => {
+      const mod = dev.createShaderModule({ code });
+      return dev.createRenderPipeline({
+        layout: 'auto',
+        vertex: { module: mod, entryPoint: 'vs' },
+        fragment: { module: mod, entryPoint: 'fs', targets: formats.map((format) => ({ format })) },
+      });
+    };
+    this._srPipes = {
+      texIn: makePipe(texInFs, ['rgba16float']),
+      conv: [null, 1, 2, 3, 4].map((m) => (m ? makePipe(makeConvFs(m), Array(m).fill('rgba16float')) : null)),
+      add: [null, 1, 2, 3, 4].map((m) => (m ? makePipe(makeAddFs(m), Array(m).fill('rgba16float')) : null)),
+      renderSr: makePipe(renderSrFs, ['rgba8unorm']),
+    };
+    return this._srPipes;
   }
 
   _getBlitPipe(format) {
@@ -716,6 +1024,66 @@ function makeU32Uniform(device, vals) {
   return buf;
 }
 
+function _uploadWebGPUFrame(device, engine, entry, targetW, targetH, source) {
+  entry.externalTex = null;
+  if (source instanceof Uint8Array || source instanceof Uint8ClampedArray) {
+    device.queue.writeTexture(
+      { texture: entry.tex },
+      source,
+      { bytesPerRow: targetW * 4, rowsPerImage: targetH },
+      [targetW, targetH],
+    );
+    return;
+  }
+  const srcW = source.videoWidth || source.width || targetW;
+  const srcH = source.videoHeight || source.height || targetH;
+  if (srcW === targetW && srcH === targetH) {
+    device.queue.copyExternalImageToTexture(
+      { source },
+      { texture: entry.tex },
+      [targetW, targetH],
+    );
+    return;
+  }
+  if (!entry.srcTex || entry.srcW !== srcW || entry.srcH !== srcH) {
+    if (entry.srcTex) entry.srcTex.destroy();
+    entry.srcTex = device.createTexture({
+      size: [srcW, srcH],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    entry.srcW = srcW;
+    entry.srcH = srcH;
+  }
+  device.queue.copyExternalImageToTexture(
+    { source },
+    { texture: entry.srcTex },
+    [srcW, srcH],
+  );
+  const pipe = engine._getBlitPipe('rgba8unorm');
+  const bg = device.createBindGroup({
+    layout: pipe.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: entry.srcTex.createView() },
+      { binding: 1, resource: engine.sampler },
+    ],
+  });
+  const enc = device.createCommandEncoder();
+  const pass = enc.beginRenderPass({
+    colorAttachments: [{
+      view: entry.tex.createView(),
+      loadOp: 'clear',
+      clearValue: { r: 0, g: 0, b: 0, a: 1 },
+      storeOp: 'store',
+    }],
+  });
+  pass.setPipeline(pipe);
+  pass.setBindGroup(0, bg);
+  pass.draw(3);
+  pass.end();
+  device.queue.submit([enc.finish()]);
+}
+
 class WebGPUSession {
   constructor(engine, model, options) {
     this.engine = engine;
@@ -723,19 +1091,23 @@ class WebGPUSession {
     this.model = model;
     this.width = options.width;
     this.height = options.height;
+    this.isSr = model.data.meta.task === 'sr';
+    this.scale = this.isSr ? (model.data.meta.scale || 2) : 1;
 
     const internal = options.internal;
     let iw = this.width;
     let ih = this.height;
     if (Array.isArray(internal)) {
       [iw, ih] = internal;
-    } else if (internal === 'auto' && Math.max(this.width, this.height) > 640) {
+    } else if (!this.isSr && internal === 'auto' && Math.max(this.width, this.height) > 640) {
       const s = 288 / this.height;
       iw = align32(Math.round(this.width * s));
       ih = align32(Math.round(this.height * s));
     }
-    this.workW = align32(iw);
-    this.workH = align32(ih);
+    this.workW = this.isSr ? iw : align32(iw);
+    this.workH = this.isSr ? ih : align32(ih);
+    this.outW = this.width * this.scale;
+    this.outH = this.height * this.scale;
     this.k = options.k ?? model.data.meta.default_K ?? 1;
     this.stillGuard = options.stillGuard !== false;
     const samp = options.sampling || 'model';
@@ -789,18 +1161,23 @@ class WebGPUSession {
     this.texInUni = makeU32Uniform(this.device, [this.width, this.height, this.workW, this.workH]);
     this.ownedBufs.push(this.texInUni);
 
-    const flowMeta = this.plan.tensorMeta.get(this.plan.finalIds.flow_tq);
-    this.renderUni = makeU32Uniform(this.device, [
-      this.width,
-      this.height,
-      flowMeta.w,
-      flowMeta.h,
-      { f32: this.width / this.workW },
-      { f32: this.height / this.workH },
-      this.cubic ? 1 : 0,
-      this.stillGuard ? 1 : 0,
-    ]);
-    this.ownedBufs.push(this.renderUni);
+    if (this.isSr) {
+      this.srUni = makeU32Uniform(this.device, [this.width, this.height, this.outW, this.outH]);
+      this.ownedBufs.push(this.srUni);
+    } else {
+      const flowMeta = this.plan.tensorMeta.get(this.plan.finalIds.flow_tq);
+      this.renderUni = makeU32Uniform(this.device, [
+        this.width,
+        this.height,
+        flowMeta.w,
+        flowMeta.h,
+        { f32: this.width / this.workW },
+        { f32: this.height / this.workH },
+        this.cubic ? 1 : 0,
+        this.stillGuard ? 1 : 0,
+      ]);
+      this.ownedBufs.push(this.renderUni);
+    }
 
     this.addInput();
     this.addInput();
@@ -817,12 +1194,13 @@ class WebGPUSession {
 
     const addConv = (targetList, inT, outT, wNames, stride) => {
       const hasPrelu = wNames.length >= 3;
+      const pipe = stride === 1 ? P.conv3x3Tiled : P.conv3x3;
       const uni = makeU32Uniform(dev, [inT.c, outT.c, inT.h, inT.w, outT.h, outT.w, stride, hasPrelu ? 1 : 0]);
       this.ownedBufs.push(uni);
       targetList.push({
         kind: 'dispatch',
-        pipe: P.conv3x3,
-        bg: bg(P.conv3x3, [
+        pipe,
+        bg: bg(pipe, [
           { buffer: inT.buf },
           { buffer: this.model.weightBufs.get(wNames[0]) },
           { buffer: this.model.weightBufs.get(wNames[1]) },
@@ -837,7 +1215,7 @@ class WebGPUSession {
     const compileSteps = (steps, targetList) => {
       for (const step of steps) {
         const op = step.op;
-        if (op === 'render_pix') continue;
+        if (op === 'render_pix' || op === 'render_sr') continue;
 
         if (op === 'conv' || op === 'conv2d') {
           addConv(targetList, this.tensors.get(step.inIds[0]), this.tensors.get(step.outIds[0]), step.w, step.stride || 1);
@@ -1019,7 +1397,7 @@ class WebGPUSession {
   addOutput() {
     const slot = this.outputs.length;
     const tex = this.device.createTexture({
-      size: [this.width, this.height],
+      size: [this.outW, this.outH],
       format: 'rgba8unorm',
       usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
     });
@@ -1041,22 +1419,7 @@ class WebGPUSession {
   }
 
   pushFrame(slot, source) {
-    const entry = this.inputs[slot];
-    entry.externalTex = null;
-    if (source instanceof Uint8Array || source instanceof Uint8ClampedArray) {
-      this.device.queue.writeTexture(
-        { texture: entry.tex },
-        source,
-        { bytesPerRow: this.width * 4, rowsPerImage: this.height },
-        [this.width, this.height],
-      );
-    } else {
-      this.device.queue.copyExternalImageToTexture(
-        { source },
-        { texture: entry.tex },
-        [this.width, this.height],
-      );
-    }
+    _uploadWebGPUFrame(this.device, this.engine, this.inputs[slot], this.width, this.height, source);
   }
 
   _runList(enc, list) {
@@ -1129,6 +1492,49 @@ class WebGPUSession {
     dev.queue.submit([enc.finish()]);
   }
 
+  /** Run 2x super-resolution on `srcSlot` and store result into `outputs[outSlot]`. */
+  upscale(srcSlot = 0, outSlot = 0) {
+    if (!this.isSr) throw new Error('upscale() requires a super-resolution model');
+    const dev = this.device;
+    const P = this.engine.pipes;
+    const enc = dev.createCommandEncoder();
+
+    const srcView = this.inputTexture(srcSlot).createView();
+    const dst = this.tensors.get('A');
+    const texInBg = dev.createBindGroup({
+      layout: P.texIn.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: srcView },
+        { binding: 1, resource: { buffer: dst.buf } },
+        { binding: 2, resource: { buffer: this.texInUni } },
+      ],
+    });
+    const pIn = enc.beginComputePass();
+    pIn.setPipeline(P.texIn);
+    pIn.setBindGroup(0, texInBg);
+    pIn.dispatchWorkgroups(Math.ceil(this.workW / 8), Math.ceil(this.workH / 8), 1);
+    pIn.end();
+
+    this._runList(enc, this.staticDispatches.pair);
+
+    const srBg = dev.createBindGroup({
+      layout: P.renderSr.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: srcView },
+        { binding: 1, resource: { buffer: this.tensors.get(this.plan.finalIds.delta_lr).buf } },
+        { binding: 2, resource: this.outputs[outSlot].createView() },
+        { binding: 3, resource: { buffer: this.srUni } },
+      ],
+    });
+    const pSr = enc.beginComputePass();
+    pSr.setPipeline(P.renderSr);
+    pSr.setBindGroup(0, srBg);
+    pSr.dispatchWorkgroups(Math.ceil(this.outW / 8), Math.ceil(this.outH / 8), 1);
+    pSr.end();
+
+    dev.queue.submit([enc.finish()]);
+  }
+
   /** Blit a source or output texture onto a configured GPUCanvasContext. */
   presentToContext(canvasCtx, format, frame) {
     const dev = this.device;
@@ -1157,19 +1563,21 @@ class WebGPUSession {
 
   async readRgba(outSlot = 0) {
     const dev = this.device;
-    const stride = Math.ceil((this.width * 4) / 256) * 256;
+    const w = this.outW;
+    const h = this.outH;
+    const stride = Math.ceil((w * 4) / 256) * 256;
     const buf = dev.createBuffer({
-      size: stride * this.height,
+      size: stride * h,
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
     const enc = dev.createCommandEncoder();
-    enc.copyTextureToBuffer({ texture: this.outputs[outSlot] }, { buffer: buf, bytesPerRow: stride }, [this.width, this.height]);
+    enc.copyTextureToBuffer({ texture: this.outputs[outSlot] }, { buffer: buf, bytesPerRow: stride }, [w, h]);
     dev.queue.submit([enc.finish()]);
     await buf.mapAsync(GPUMapMode.READ);
     const mapped = new Uint8Array(buf.getMappedRange());
-    const out = new Uint8Array(this.width * this.height * 4);
-    for (let y = 0; y < this.height; y++) {
-      out.set(mapped.subarray(y * stride, y * stride + this.width * 4), y * this.width * 4);
+    const out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      out.set(mapped.subarray(y * stride, y * stride + w * 4), y * w * 4);
     }
     buf.unmap();
     buf.destroy();
@@ -1184,7 +1592,269 @@ class WebGPUSession {
     for (const b of this.ownedBufs) b.destroy();
     this.ownedBufs = [];
     this.tensors.clear();
-    for (const inp of this.inputs) inp.tex.destroy();
+    for (const inp of this.inputs) {
+      inp.tex.destroy();
+      if (inp.srcTex) inp.srcTex.destroy();
+    }
+    for (const out of this.outputs) out.destroy();
+    this.inputs = [];
+    this.outputs = [];
+  }
+}
+
+class WebGPUSrSession {
+  constructor(engine, model, options) {
+    this.engine = engine;
+    this.device = engine.device;
+    this.model = model;
+    this.isSr = true;
+    this.scale = model.data.meta.scale || 2;
+    this.width = options.width;
+    this.height = options.height;
+    this.workW = this.width;
+    this.workH = this.height;
+    this.outW = this.width * this.scale;
+    this.outH = this.height * this.scale;
+    this.pipes = engine._getSrPipes();
+
+    this.plan = compilePlan(model.data, this.workW, this.workH, 1);
+    this.ownedBufs = [];
+    this.tensors = new Map();
+
+    for (const [id, meta] of this.plan.tensorMeta.entries()) {
+      if (id === 't' || id === this.plan.finalIds.render) continue;
+      const layers = Math.ceil(meta.c / 4);
+      const tex = this.device.createTexture({
+        size: [meta.w, meta.h, layers],
+        dimension: '2d',
+        format: 'rgba16float',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+      const arrayView = tex.createView({ dimension: '2d-array', baseArrayLayer: 0, arrayLayerCount: layers });
+      const layerViews = [];
+      for (let l = 0; l < layers; l++) {
+        layerViews.push(tex.createView({ dimension: '2d', baseArrayLayer: l, arrayLayerCount: 1 }));
+      }
+      this.tensors.set(id, { tex, arrayView, layerViews, layers, w: meta.w, h: meta.h, c: meta.c });
+    }
+
+    this.passes = [];
+    const bg = (pipe, entries) => this.device.createBindGroup({
+      layout: pipe.getBindGroupLayout(0),
+      entries: entries.map((resource, binding) => ({ binding, resource })),
+    });
+
+    for (const step of this.plan.pairSteps) {
+      if (step.op === 'render_sr') continue;
+      if (step.op === 'conv' || step.op === 'conv2d') {
+        const inT = this.tensors.get(step.inIds[0]);
+        const outT = this.tensors.get(step.outIds[0]);
+        const cw = model.srConvWeights.get(step.w.join('|'));
+        const act = step.w.length >= 3 ? 1 : 0;
+        for (let base = 0; base < cw.gOut; base += 4) {
+          const cnt = Math.min(4, cw.gOut - base);
+          const pipe = this.pipes.conv[cnt];
+          const uniBytes = new ArrayBuffer(160);
+          const u32 = new Uint32Array(uniBytes);
+          const f32 = new Float32Array(uniBytes);
+          u32[0] = inT.w; u32[1] = inT.h; u32[2] = cw.gIn; u32[3] = base; u32[4] = act;
+          for (let m = 0; m < cnt; m++) {
+            const g = base + m;
+            for (let lane = 0; lane < 4; lane++) {
+              const oc = g * 4 + lane;
+              f32[8 + m * 4 + lane] = oc < cw.cout ? cw.bF32[oc] : 0.0;
+              f32[24 + m * 4 + lane] = (oc < cw.cout && cw.pF32) ? cw.pF32[oc] : 1.0;
+            }
+          }
+          const uni = this.device.createBuffer({ size: 160, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+          this.device.queue.writeBuffer(uni, 0, uniBytes);
+          this.ownedBufs.push(uni);
+          this.passes.push({
+            pipe,
+            bindGroup: bg(pipe, [inT.arrayView, { buffer: cw.wBuf }, { buffer: uni }]),
+            views: outT.layerViews.slice(base, base + cnt),
+          });
+        }
+      } else if (step.op === 'add') {
+        const aT = this.tensors.get(step.inIds[0]);
+        const bT = this.tensors.get(step.inIds[1]);
+        const outT = this.tensors.get(step.outIds[0]);
+        for (let base = 0; base < outT.layers; base += 4) {
+          const cnt = Math.min(4, outT.layers - base);
+          const pipe = this.pipes.add[cnt];
+          const uni = makeU32Uniform(this.device, [base, 0, 0, 0]);
+          this.ownedBufs.push(uni);
+          this.passes.push({
+            pipe,
+            bindGroup: bg(pipe, [aT.arrayView, bT.arrayView, { buffer: uni }]),
+            views: outT.layerViews.slice(base, base + cnt),
+          });
+        }
+      }
+    }
+
+    this.srUni = makeU32Uniform(this.device, [this.width, this.height, this.outW, this.outH]);
+    this.ownedBufs.push(this.srUni);
+
+    this.inputs = [];
+    this.outputs = [];
+    this.addInput();
+    this.addOutput();
+  }
+
+  addInput() {
+    const slot = this.inputs.length;
+    const tex = this.device.createTexture({
+      size: [this.width, this.height],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    this.inputs.push({ tex, externalTex: null });
+    return slot;
+  }
+
+  addOutput() {
+    const slot = this.outputs.length;
+    const tex = this.device.createTexture({
+      size: [this.outW, this.outH],
+      format: 'rgba8unorm',
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC,
+    });
+    this.outputs.push(tex);
+    return slot;
+  }
+
+  inputTexture(slot) {
+    return this.inputs[slot].externalTex || this.inputs[slot].tex;
+  }
+
+  outputTexture(slot = 0) {
+    return this.outputs[slot];
+  }
+
+  setExternalInputTexture(slot, gpuTexture) {
+    this.inputs[slot].externalTex = gpuTexture;
+  }
+
+  pushFrame(slot, source) {
+    _uploadWebGPUFrame(this.device, this.engine, this.inputs[slot], this.width, this.height, source);
+  }
+
+  upscale(srcSlot = 0, outSlot = 0) {
+    const dev = this.device;
+    const P = this.pipes;
+    const enc = dev.createCommandEncoder();
+    const srcView = this.inputTexture(srcSlot).createView();
+
+    const aT = this.tensors.get('A');
+    const inBg = dev.createBindGroup({
+      layout: P.texIn.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: srcView }],
+    });
+    const clearCol = { r: 0, g: 0, b: 0, a: 0 };
+    {
+      const pass = enc.beginRenderPass({
+        colorAttachments: [{ view: aT.layerViews[0], loadOp: 'clear', clearValue: clearCol, storeOp: 'store' }],
+      });
+      pass.setPipeline(P.texIn);
+      pass.setBindGroup(0, inBg);
+      pass.draw(3);
+      pass.end();
+    }
+
+    for (const item of this.passes) {
+      const pass = enc.beginRenderPass({
+        colorAttachments: item.views.map((view) => ({ view, loadOp: 'clear', clearValue: clearCol, storeOp: 'store' })),
+      });
+      pass.setPipeline(item.pipe);
+      pass.setBindGroup(0, item.bindGroup);
+      pass.draw(3);
+      pass.end();
+    }
+
+    const deltaT = this.tensors.get(this.plan.finalIds.delta_lr);
+    const srBg = dev.createBindGroup({
+      layout: P.renderSr.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: srcView },
+        { binding: 1, resource: deltaT.arrayView },
+        { binding: 2, resource: { buffer: this.srUni } },
+      ],
+    });
+    {
+      const pass = enc.beginRenderPass({
+        colorAttachments: [{ view: this.outputs[outSlot].createView(), loadOp: 'clear', clearValue: clearCol, storeOp: 'store' }],
+      });
+      pass.setPipeline(P.renderSr);
+      pass.setBindGroup(0, srBg);
+      pass.draw(3);
+      pass.end();
+    }
+
+    dev.queue.submit([enc.finish()]);
+  }
+
+  presentToContext(canvasCtx, format, frame) {
+    const dev = this.device;
+    const pipe = this.engine._getBlitPipe(format);
+    const tex = 'source' in frame ? this.inputTexture(frame.source) : this.outputTexture(frame.output ?? 0);
+    const bg = dev.createBindGroup({
+      layout: pipe.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: tex.createView() },
+        { binding: 1, resource: this.engine.sampler },
+      ],
+    });
+    const enc = dev.createCommandEncoder();
+    const pass = enc.beginRenderPass({
+      colorAttachments: [{
+        view: canvasCtx.getCurrentTexture().createView(),
+        loadOp: 'clear', clearValue: { r: 0, g: 0, b: 0, a: 1 }, storeOp: 'store',
+      }],
+    });
+    pass.setPipeline(pipe);
+    pass.setBindGroup(0, bg);
+    pass.draw(3);
+    pass.end();
+    dev.queue.submit([enc.finish()]);
+  }
+
+  async readRgba(outSlot = 0) {
+    const dev = this.device;
+    const w = this.outW;
+    const h = this.outH;
+    const stride = Math.ceil((w * 4) / 256) * 256;
+    const buf = dev.createBuffer({
+      size: stride * h,
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+    });
+    const enc = dev.createCommandEncoder();
+    enc.copyTextureToBuffer({ texture: this.outputs[outSlot] }, { buffer: buf, bytesPerRow: stride }, [w, h]);
+    dev.queue.submit([enc.finish()]);
+    await buf.mapAsync(GPUMapMode.READ);
+    const mapped = new Uint8Array(buf.getMappedRange());
+    const out = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      out.set(mapped.subarray(y * stride, y * stride + w * 4), y * w * 4);
+    }
+    buf.unmap();
+    buf.destroy();
+    return out;
+  }
+
+  async finish() {
+    await this.device.queue.onSubmittedWorkDone();
+  }
+
+  destroy() {
+    for (const b of this.ownedBufs) b.destroy();
+    this.ownedBufs = [];
+    for (const t of this.tensors.values()) t.tex.destroy();
+    this.tensors.clear();
+    for (const inp of this.inputs) {
+      inp.tex.destroy();
+      if (inp.srcTex) inp.srcTex.destroy();
+    }
     for (const out of this.outputs) out.destroy();
     this.inputs = [];
     this.outputs = [];

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Additional Terms: see LICENSE-ADDITIONAL_TERMS-zh-CN.md (v1.6.7-r4)
-"""FrameFlowNet: 1:1 graph-compatible PyTorch implementation supporting FrameFlow-Std and FrameFlow-Lite.
+"""GameFINet (FrameFlowNet): 1:1 graph-compatible PyTorch implementation supporting GameFI-Std and GameFI-Lite.
 
 Input frames A, B are BGR in [0, 1], shape [B, 3, H, W] with H, W divisible by 32.
 Parameter names match the `graph.json` / manifest specification so exported weights load
@@ -208,7 +208,7 @@ class PairState:
 
 
 class FrameFlowNet(nn.Module):
-    """Full optical-flow neural frame interpolator (FrameFlow-Std / FrameFlow-Lite)."""
+    """Full optical-flow neural frame interpolator (GameFI-Std / GameFI-Lite)."""
 
     def __init__(self, cfg: ModelConfig | str = "std") -> None:
         super().__init__()
@@ -342,3 +342,6 @@ class FrameFlowNet(nn.Module):
 
     def param_count(self) -> int:
         return sum(p.numel() for p in self.parameters())
+
+
+GameFINet = FrameFlowNet

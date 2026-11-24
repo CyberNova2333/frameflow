@@ -129,6 +129,8 @@ export function parseModel(graphInput, manifestInput, binInput) {
         tensors: shapes.size,
         renderSampling: manifest.meta.render_sampling || 'bilinear',
         defaultK: manifest.meta.default_K ?? 1,
+        task: manifest.meta.task || 'interp',
+        scale: manifest.meta.scale || 1,
         cfg: manifest.meta.cfg || null,
       };
     },
@@ -174,10 +176,13 @@ export function compilePlan(modelData, workW, workH, k, opts = {}) {
   };
   emitList(modelData.graph.ops);
 
-  // Split index: first op reading `t`, or `mul_t` / `film_mlp`
-  const splitIdx = flatOps.findIndex(
-    (op) => op.op === 'mul_t' || op.op === 'film_mlp' || (Array.isArray(op.in) && op.in.includes('t')),
-  );
+  // Split index: SR runs single-stage; interpolation splits at first op reading `t` / `mul_t` / `film_mlp`
+  const isSr = modelData.meta.task === 'sr' || flatOps.some((op) => op.op === 'render_sr');
+  const splitIdx = isSr
+    ? flatOps.length
+    : flatOps.findIndex(
+        (op) => op.op === 'mul_t' || op.op === 'film_mlp' || (Array.isArray(op.in) && op.in.includes('t')),
+      );
   if (splitIdx < 0) throw new Error('Invalid graph: could not locate mid-stage split point');
 
   // Static shape inference & SSA renaming (so repeat-carried names get unique buffers cleanly)
@@ -256,6 +261,9 @@ export function compilePlan(modelData, workW, workH, k, opts = {}) {
       tensorMeta.set(outIds[1], { c: 1, h: s0.h, w: s0.w });
     } else if (op === 'render_pix') {
       tensorMeta.set(outIds[0], { c: 3, h: workH, w: workW });
+    } else if (op === 'render_sr') {
+      const sc = raw.scale || modelData.meta.scale || 2;
+      tensorMeta.set(outIds[0], { c: 3, h: workH * sc, w: workW * sc });
     } else {
       throw new Error(`Unsupported graph op: ${op}`);
     }
@@ -264,6 +272,7 @@ export function compilePlan(modelData, workW, workH, k, opts = {}) {
   }
 
   return {
+    task: isSr ? 'sr' : 'interp',
     pairSteps: steps.filter((s) => s.stage === 'pair'),
     midSteps: steps.filter((s) => s.stage === 'mid'),
     tensorMeta,
@@ -271,6 +280,7 @@ export function compilePlan(modelData, workW, workH, k, opts = {}) {
       flow_tq: nameToId.get('flow_tq'),
       vis_tq: nameToId.get('vis_tq'),
       R_t: nameToId.get('R_t'),
+      delta_lr: nameToId.get('delta_lr'),
       render: nameToId.get('render'),
     },
   };

@@ -9,7 +9,9 @@ checkpoints/
 runs/
 exports/
 eval_outputs/
+artifacts/
 dist/
+dist_sr/
 *.pt
 *.pth
 *.bin

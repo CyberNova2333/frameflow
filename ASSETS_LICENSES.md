@@ -74,6 +74,7 @@
 | `C-04`；Blender Open Movies（*Big Buck Bunny*、*Tears of Steel*、*Sintel*） | 外部公开视频数据源（不随仓库分发，由 `scripts/prepare_data.py` 按需下载至被 `.gitignore` 忽略的 `data/`） | `scripts/prepare_data.py` URL 清单；训练打包时在 `DATA_PROVENANCE.json` 中记录溯源 | Blender Foundation（`download.blender.org` 官方公开分发链接） | Blender Foundation（CC BY 3.0） | 严格禁止将第三方原始视频文件提交入库；仅用于训练监督，发行物中提供来源清单 |
 | `C-05`；Xiph.org / SVT Derf's Test Media（`720p50_*`、`720p5994_*`） | 外部公开测试视频序列（不随仓库分发，由 `scripts/prepare_data.py` 按需下载） | `scripts/prepare_data.py` URL 清单；训练打包时记录于 `DATA_PROVENANCE.json` | https://media.xiph.org/video/derf/ | Sveriges Television AB (SVT) / Xiph.org | 开放研究与分发测试序列，仅按需下载至本地忽略目录 |
 | `C-06`；FlyHigh Engine WebGPU（可选外部对照参考） | 外部可选验证对照（**未随本仓库分发或内嵌任何代码或权重**） | `scripts/verify_parity.py` / `scripts/verify_parity.mjs` 通过命令行路径参数可选加载本地外部目录作数值对齐测试 | 外部独立项目（代码为 Apache-2.0；其自带权重为 CC BY-NC 4.0，明确禁止引入本仓库） | FlyHigh Engine 作者 | 本仓库 `runtime/` 与 `frameflow/` 均为独立从零编写，不含其源码、WASM 或 CC BY-NC 权重 |
+| `C-07`；SYNLA-Dataset v1（`Dataset_Color`，不含 `SYNLA-Plus`） | 外部程序化动漫/线条合成数据集（不随仓库分发，由 `scripts/prepare_sr_data.py` 按需下载至被 `.gitignore` 忽略的 `data/`） | `scripts/prepare_sr_data.py`；训练打包时记录于 `DATA_PROVENANCE.json` | `https://github.com/bloc97/SYNLA-Dataset`（主分支 `Dataset_Color`，2,224 张纯粹程序化合成 PNG） | bloc97（MIT） | 已明确剔除含 DIV2K/网络抓取帧的 `SYNLA-Plus`，仅使用纯程序化合成的 MIT 子集 `Dataset_Color` 训练 `GameSR-2x` |
 
 ### 3.2 原始许可、本地修改与组合边界
 
@@ -85,12 +86,13 @@
 | `C-04` | Creative Commons Attribution 3.0 Unported（CC BY 3.0，Blender Foundation） | 无视频二次分发，仅本地按需下载用于训练 | 外部数据集；若发布基于其训练的权重，随发行包 `DATA_PROVENANCE.json` 保留明确署名与许可来源 | `[附加条款：不适用（遵循原上游许可证）]` |
 | `C-05` | Xiph.org / SVT 公开研究测试媒体条款（见 `media.xiph.org/video/derf/`） | 无视频二次分发，仅本地按需下载用于训练 | 外部数据集；随发行包 `DATA_PROVENANCE.json` 保留来源记录 | `[附加条款：不适用（遵循原上游许可证）]` |
 | `C-06` | Apache-2.0（仅代码；本仓库未引入其代码或权重） | 未引入 | 仅作为开发者本机可选对齐脚本的外部参照路径 | `[附加条款：不适用（遵循原上游许可证）]` |
+| `C-07` | MIT（bloc97/SYNLA-Dataset `Dataset_Color` 原仓库 `LICENSE`） | 无原始图片二次分发，仅本地按需下载用于训练 | 外部数据集；随发行包 `DATA_PROVENANCE.json` 保留 MIT 来源署名 | `[附加条款：不适用（遵循原上游许可证）]` |
 
 ### 3.3 需保留的许可、NOTICE 与版权声明索引
 
 | 组件编号 | 声明类别及原始出处 | 实际随附或提供位置 | 原许可要求保留的内容和适用范围 | 载体安排说明 |
 | --- | --- | --- | --- | --- |
-| `C-04` / `C-05` | 开放训练媒体来源与 CC BY 3.0 署名信息 | `scripts/prepare_data.py` 及每次权重发版归档内的 `DATA_PROVENANCE.json` / `RELEASE_NOTES.md` | 注明 Blender Foundation（*Big Buck Bunny*、*Tears of Steel*、*Sintel*，CC BY 3.0）与 Xiph.org / SVT 测试序列来源 | 由 `scripts/package_release.py` 自动随权重压缩包与 Release Notes 交付 |
+| `C-04` / `C-05` / `C-07` | 开放训练媒体与程序化数据集来源署名 | `scripts/prepare_data.py`、`scripts/prepare_sr_data.py` 及每次权重发版归档内的 `DATA_PROVENANCE.json` / `RELEASE_NOTES.md` | 注明 Blender Foundation（CC BY 3.0）、Xiph.org / SVT 与 bloc97 SYNLA v1（MIT）来源 | 由 `scripts/package_release.py` 自动随权重压缩包与 Release Notes 交付 |
 
 ## 四、独立美术、字体与项目标识资产 (Independent Artwork, Fonts & Project Identifier Assets)
 
@@ -100,4 +102,5 @@
 
 | 资产编号、名称及类别 | 实际文件、来源与所采用版本 | 作者、版权持有人及可核实依据 | 实际有效许可证或具体授权及完整文本位置 | 是否为项目标识、随包方式及替换情况 | 适用范围、修改与尚待核实事项 |
 | --- | --- | --- | --- | --- | --- |
-| `A-01`；FrameFlow 项目名称与模型档位标识（`FrameFlow`、`FrameFlow-Std`、`FrameFlow-Lite`） | 见 `README.md`、`package.json`、`pyproject.toml`、`frameflow/config.py` | CyberNova（`P-01`） | 依据 `LICENSE-ADDITIONAL_TERMS-zh-CN.md` 第五条与第八条管理（不创设法律未赋予的注册商标排他权） | 是（项目文字标识）；下游二次分发或修改版本可依第八条更名并须如实区分来源 | 禁止冒充官方发布或虚构官方背书，具体规则见附加条款第五条与第八条 |
+| `A-01`；FrameFlow 系列与模型档位标识（`FrameFlow`、`GameFI`、`GameFI-Std`、`GameFI-Lite`、`GameSR`、`GameSR-2x`、`GameSR-Std`、`GameSR-Lite`） | 见 `README.md`、`package.json`、`pyproject.toml`、`frameflow/config.py`、`frameflow/sr_config.py` | CyberNova（`P-01`） | 依据 `LICENSE-ADDITIONAL_TERMS-zh-CN.md` 第五条与第八条管理（不创设法律未赋予的注册商标排他权） | 是（项目文字标识）；下游二次分发或修改版本可依第八条更名并须如实区分来源 | 禁止冒充官方发布或虚构官方背书，具体规则见附加条款第五条与第八条 |
+| `A-02`；本机合成 UI 训练图所用系统字体（`Noto Sans CJK`、`DejaVu Sans`） | 仅训练期由 `scripts/prepare_sr_data.py` 调用系统字体栅格化为像素训练样本；仓库及权重包内不含字体文件 | Google & Adobe（SIL OFL 1.1） / DejaVu Fonts Team（Bitstream Vera 宽松许可） | SIL OFL 1.1 / Bitstream Vera Font License（随操作系统字体包安装） | 未随仓库或权重打包 | 仅用于离线生成游戏 HUD/对话文字超分训练样本 |

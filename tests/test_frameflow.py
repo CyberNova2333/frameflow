@@ -22,14 +22,22 @@ from frameflow.dataset import (
     overlay_synthetic_hud,
 )
 from frameflow.export import export_model
-from frameflow.losses import FrameFlowLoss
-from frameflow.model import FrameFlowNet
+from frameflow import FrameFlowLoss, FrameFlowNet, GameFILoss, GameFINet
+from frameflow.sr_config import SR_PRESETS, get_sr_preset
+from frameflow.sr_dataset import GameSRDataset, ValidationSRDataset
+from frameflow.sr_export import export_sr_model
+from frameflow.sr_losses import GameSRLoss
+from frameflow.sr_model import GameSRNet
 
 
 class TestFrameFlow(unittest.TestCase):
     def test_presets_and_param_counts(self) -> None:
-        std = FrameFlowNet("std")
+        self.assertIs(GameFINet, FrameFlowNet)
+        self.assertIs(GameFILoss, FrameFlowLoss)
+        std = GameFINet("std")
         lite = FrameFlowNet("lite")
+        self.assertEqual(std.cfg.name, "GameFI-Std")
+        self.assertEqual(lite.cfg.name, "GameFI-Lite")
         self.assertEqual(std.param_count(), 775_811)
         self.assertEqual(lite.param_count(), 222_179)
         self.assertEqual(get_preset("standard"), PRESETS["std"])
@@ -87,6 +95,8 @@ class TestFrameFlow(unittest.TestCase):
                 blob_bytes = (out_dir / "model.bin").read_bytes()
 
                 self.assertEqual(len(blob_bytes), info["n_params"] * 2)
+                self.assertEqual(manifest["meta"]["model"], f"GameFI-{preset.capitalize()}")
+                self.assertEqual(graph["meta"]["model"], f"GameFI-{preset.capitalize()}")
                 self.assertEqual(manifest["meta"]["train_step"], 123)
                 tensors = manifest["tensors"]
 
@@ -138,6 +148,70 @@ class TestFrameFlow(unittest.TestCase):
                 self.assertEqual(tuple(sample["GT"].shape), (3, 64, 64))
                 self.assertGreater(float(sample["t"]), 0.0)
                 self.assertLess(float(sample["t"]), 1.0)
+
+    def test_gamesr_models_losses_export_and_dataset(self) -> None:
+        sr_std = GameSRNet("sr_std")
+        sr_lite = GameSRNet("sr_lite")
+        self.assertEqual(sr_std.param_count(), 11_548)
+        self.assertEqual(sr_lite.param_count(), 6_936)
+        self.assertEqual(get_sr_preset("standard"), SR_PRESETS["sr_std"])
+        self.assertEqual(get_sr_preset("lite"), SR_PRESETS["sr_lite"])
+
+        lr = torch.rand(2, 3, 32, 48, dtype=torch.float32)
+        hr = torch.rand(2, 3, 64, 96, dtype=torch.float32)
+        criterion = GameSRLoss(w_kd=0.25)
+        with torch.no_grad():
+            t_out = sr_std(lr)
+        out = sr_lite(lr)
+        self.assertEqual(tuple(out["render"].shape), (2, 3, 64, 96))
+        self.assertEqual(tuple(out["delta_hr"].shape), (2, 3, 64, 96))
+        self.assertEqual(tuple(out["base_hr"].shape), (2, 3, 64, 96))
+        self.assertEqual(tuple(out["delta_lr"].shape), (2, 12, 32, 48))
+        self.assertGreaterEqual(float(out["render"].detach().min()), 0.0)
+        self.assertLessEqual(float(out["render"].detach().max()), 1.0)
+
+        loss, metrics = criterion(out, hr, teacher_out=t_out)
+        self.assertTrue(torch.isfinite(loss))
+        self.assertGreater(metrics["total"], 0.0)
+        self.assertIn("kd", metrics)
+        loss.backward()
+        grad_sum = sum(p.grad.abs().sum().item() for p in sr_lite.parameters() if p.grad is not None)
+        self.assertGreater(grad_sum, 0.0)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for preset in ("sr_std", "sr_lite"):
+                model = GameSRNet(preset).eval()
+                out_dir = Path(tmp) / preset
+                info = export_sr_model(model, out_dir, train_step=77)
+                manifest = json.loads((out_dir / "model.json").read_text())
+                graph = json.loads((out_dir / "graph.json").read_text())
+                blob_bytes = (out_dir / "model.bin").read_bytes()
+
+                self.assertEqual(len(blob_bytes), info["n_params"] * 2)
+                self.assertEqual(manifest["meta"]["task"], "sr")
+                self.assertEqual(manifest["meta"]["scale"], 2)
+                self.assertEqual(manifest["meta"]["train_step"], 77)
+                tensors = manifest["tensors"]
+                for op in graph["ops"]:
+                    for wname in op.get("w", []):
+                        self.assertIn(wname, tensors)
+                        nelem = 1
+                        for dim in tensors[wname]["shape"]:
+                            nelem *= dim
+                        self.assertLessEqual((tensors[wname]["offset"] + nelem) * 2, len(blob_bytes))
+
+            ds_dir = Path(tmp) / "sr_imgs"
+            ds_dir.mkdir()
+            Image.fromarray(np.full((160, 160, 3), 120, dtype=np.uint8)).save(ds_dir / "sample.png")
+            ds = GameSRDataset([(ds_dir, 1.0)], hr_crop=128, scale=2, ui_prob=0.1, samples_per_epoch=20)
+            vds = ValidationSRDataset([ds_dir], hr_crop=128, scale=2, max_samples=4)
+            for idx in range(len(ds)):
+                s = ds[idx]
+                self.assertEqual(tuple(s["LR"].shape), (3, 64, 64))
+                self.assertEqual(tuple(s["HR"].shape), (3, 128, 128))
+            vs = vds[0]
+            self.assertEqual(tuple(vs["LR"].shape), (3, 64, 64))
+            self.assertEqual(tuple(vs["HR"].shape), (3, 128, 128))
 
 
 if __name__ == "__main__":

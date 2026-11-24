@@ -62,6 +62,7 @@ test('runtime loader parses and compiles real exported Std and Lite graphs', () 
       const bin = fs.readFileSync(path.join(dir, 'model.bin'));
       const model = parseModel(graph, man, bin);
       assert.equal(model.info().formatVersion, 1);
+      assert.equal(model.info().name, preset === 'std' ? 'GameFI-Std' : 'GameFI-Lite');
 
       const plan = compilePlan(model, 480, 288, 1);
       assert.ok(plan.pairSteps.length > 20);
@@ -70,6 +71,35 @@ test('runtime loader parses and compiles real exported Std and Lite graphs', () 
 
       const gVec = evalFilmMlp(model, ['film.film.0.weight', 'film.film.0.bias', 'film.film.2.weight', 'film.film.2.bias'], 0.5);
       assert.equal(gVec.length, model.meta.cfg.cr * 2);
+    }
+
+    if (!preExported) {
+      const py = fs.existsSync('.venv/bin/python') ? '.venv/bin/python' : 'python3';
+      execFileSync(py, [
+        '-c',
+        `import sys; sys.path.insert(0,'.'); from frameflow import GameSRNet, export_sr_model; ` +
+        `export_sr_model(GameSRNet('sr_std'), '${tmp}/sr_std', 10); ` +
+        `export_sr_model(GameSRNet('sr_lite'), '${tmp}/sr_lite', 20)`,
+      ]);
+      for (const preset of ['sr_std', 'sr_lite']) {
+        const dir = path.join(tmp, preset);
+        const model = parseModel(
+          fs.readFileSync(path.join(dir, 'graph.json'), 'utf8'),
+          fs.readFileSync(path.join(dir, 'model.json'), 'utf8'),
+          fs.readFileSync(path.join(dir, 'model.bin')),
+        );
+        const info = model.info();
+        assert.equal(info.task, 'sr');
+        assert.equal(info.scale, 2);
+        const plan = compilePlan(model, 480, 272, 1);
+        assert.equal(plan.task, 'sr');
+        assert.ok(plan.finalIds.render);
+        const outMeta = plan.tensorMeta.get(plan.finalIds.render);
+        assert.deepEqual(outMeta, { c: 3, h: 544, w: 960 });
+        assert.ok(plan.pairSteps.length >= 6);
+        assert.equal(plan.midSteps.length, 0);
+        assert.equal(plan.pairSteps[plan.pairSteps.length - 1].op, 'render_sr');
+      }
     }
   } finally {
     if (!preExported) {

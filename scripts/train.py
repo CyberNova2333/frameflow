@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
 # Additional Terms: see LICENSE-ADDITIONAL_TERMS-zh-CN.md (v1.6.7-r4)
-"""Train FrameFlow-Std (775K) or distill FrameFlow-Lite (222K) on local GPU.
+"""Train GameFI-Std (775K) or distill GameFI-Lite (222K) on local GPU.
 
 Production-ready features:
   - Mixed precision bf16 (ideal for RTX 50-series Blackwell)
@@ -109,7 +109,7 @@ def main() -> None:
     ap.add_argument("--data-weights", nargs="*", type=float, default=[], help="Optional sampling weights matching --data")
     ap.add_argument("--val-data", nargs="*", default=[], help="Validation clip directories")
     ap.add_argument("--synthetic", action="store_true", help="Use procedural smoke dataset")
-    ap.add_argument("--teacher", default=None, help="Path to FrameFlow-Std checkpoint (.pt) for distillation")
+    ap.add_argument("--teacher", default=None, help="Path to GameFI-Std checkpoint (.pt) for distillation")
     ap.add_argument("--resume", default=None, help="Explicit checkpoint path to resume from")
     ap.add_argument("--auto-resume", action="store_true", help="Automatically resume from <out>/latest.pt if present")
     ap.add_argument("--steps", type=int, default=100000)

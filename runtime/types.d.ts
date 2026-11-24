@@ -31,6 +31,8 @@ export interface FrameFlowModelInfo {
   tensors: number;
   renderSampling: string;
   defaultK: number;
+  task?: 'interp' | 'sr';
+  scale?: number;
   cfg: Record<string, number> | null;
 }
 
@@ -44,6 +46,8 @@ export interface FrameFlowSession {
   readonly height: number;
   readonly workW: number;
   readonly workH: number;
+  readonly outW?: number;
+  readonly outH?: number;
   addInput(): number;
   addOutput(): number;
   inputTexture(slot: number): GPUTexture | WebGLTexture;
@@ -52,6 +56,7 @@ export interface FrameFlowSession {
   pushFrame(slot: number, source: Uint8Array | Uint8ClampedArray | HTMLCanvasElement | OffscreenCanvas | ImageBitmap | HTMLVideoElement): void;
   pair(slotA: number, slotB: number): void;
   mid(t?: number, outSlot?: number): void;
+  upscale?(srcSlot?: number, outSlot?: number): void;
   readRgba(outSlot?: number): Promise<Uint8Array>;
   finish(): Promise<void> | void;
   destroy(): void;

@@ -11,7 +11,7 @@ branch:
             - master
 
       - name: 48GB GPU 训练并发布权重制品
-        description: 在 CNB 48GB GPU 节点下载 CC-BY/Xiph 合规素材，训练 FrameFlow-Std 并蒸馏 FrameFlow-Lite，直接推送至 CNB OCI 制品库（免配密钥）
+        description: 在 CNB 48GB GPU 节点下载 CC-BY/Xiph 合规素材，训练 GameFI-Std 并蒸馏 GameFI-Lite，直接推送至 CNB OCI 制品库（免配密钥）
         event: web_trigger_train
         groupName: 模型训练
         permissions:
@@ -40,17 +40,17 @@ branch:
             options:
               - name: Std + 蒸馏 Lite (全部)
                 value: "both"
-              - name: 仅 FrameFlow-Std (775K)
+              - name: 仅 GameFI-Std (775K)
                 value: "std"
-              - name: 仅 FrameFlow-Lite (222K)
+              - name: 仅 GameFI-Lite (222K)
                 value: "lite"
           STD_STEPS:
-            name: FrameFlow-Std 训练步数
+            name: GameFI-Std 训练步数
             type: input
             required: true
             default: "100000"
           LITE_STEPS:
-            name: FrameFlow-Lite 蒸馏步数
+            name: GameFI-Lite 蒸馏步数
             type: input
             required: true
             default: "50000"

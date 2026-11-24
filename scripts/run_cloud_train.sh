@@ -93,7 +93,7 @@ else
   fi
 fi
 
-echo "=== [4/6] Training FrameFlow-Std ==="
+echo "=== [4/6] Training GameFI-Std ==="
 if [ "$TRAIN_PRESETS" = "both" ] || [ "$TRAIN_PRESETS" = "std" ]; then
   $PY scripts/train.py \
     --preset std \
@@ -110,7 +110,7 @@ if [ "$TRAIN_PRESETS" = "both" ] || [ "$TRAIN_PRESETS" = "std" ]; then
     --auto-resume
 fi
 
-echo "=== [5/6] Distilling FrameFlow-Lite ==="
+echo "=== [5/6] Distilling GameFI-Lite ==="
 if [ "$TRAIN_PRESETS" = "both" ] || [ "$TRAIN_PRESETS" = "lite" ]; then
   TEACHER_ARGS=()
   if [ -f checkpoints/std/best.pt ]; then

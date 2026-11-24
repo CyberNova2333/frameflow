@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: AGPL-3.0-only
 # Additional Terms: see LICENSE-ADDITIONAL_TERMS-zh-CN.md (v1.6.7-r4)
-"""Package trained FrameFlow exports into Release-ready assets, checksums, and release notes.
+"""Package trained FrameFlow exports (GameFI & GameSR) into Release-ready assets, checksums, and release notes.
 
 Produces under `--out` (default `dist/`):
-  - frameflow-std-<tag>.tar.gz / frameflow-lite-<tag>.tar.gz  (full bundle with LICENSE & provenance)
-  - frameflow-std-{graph.json,model.json,model.bin}           (direct-fetch files for browser/CDN)
-  - frameflow-lite-{graph.json,model.json,model.bin}
+  - gamefi-std-<tag>.tar.gz / gamefi-lite-<tag>.tar.gz  (or gamesr-sr_*-<tag>.tar.gz)
+  - gamefi-std-{graph.json,model.json,model.bin}        (direct-fetch files for browser/CDN)
+  - gamefi-lite-{graph.json,model.json,model.bin}
   - SHA256SUMS.txt
   - RELEASE_NOTES.md
 """
@@ -62,6 +62,8 @@ def read_best_val(metrics_path: Path) -> dict | None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tag", default="weights-v0.1.0")
+    ap.add_argument("--presets", nargs="+", default=["std", "lite"])
+    ap.add_argument("--dirs", nargs="+", default=None)
     ap.add_argument("--std-dir", default="checkpoints/std")
     ap.add_argument("--lite-dir", default="checkpoints/lite")
     ap.add_argument("--data-manifest", default="data/manifest.json")
@@ -84,8 +86,10 @@ def main() -> None:
     ]
     data_manifest = Path(args.data_manifest)
 
+    default_dirs = {"std": args.std_dir, "lite": args.lite_dir}
+    pair_dirs = args.dirs if args.dirs else [default_dirs.get(p, f"checkpoints/{p}") for p in args.presets]
     packaged = []
-    for preset, ckpt_arg in [("std", args.std_dir), ("lite", args.lite_dir)]:
+    for preset, ckpt_arg in zip(args.presets, pair_dirs):
         ckpt_root = Path(ckpt_arg)
         exp_dir = pick_export_dir(ckpt_root)
         if exp_dir is None:
@@ -94,15 +98,16 @@ def main() -> None:
 
         manifest = json.loads((exp_dir / "model.json").read_text(encoding="utf-8"))
         metrics = read_best_val(ckpt_root / "metrics.jsonl")
+        prefix = "gamesr" if manifest["meta"].get("task") == "sr" or preset.startswith("sr_") else "gamefi"
 
         # Copy standalone direct-fetch files (for GitHub Release / CDN direct loading)
         for fname in ("graph.json", "model.json", "model.bin"):
-            shutil.copy2(exp_dir / fname, out_dir / f"frameflow-{preset}-{fname}")
+            shutil.copy2(exp_dir / fname, out_dir / f"{prefix}-{preset}-{fname}")
 
         # Build clean tar.gz archive with full AGPLv3 + Additional Terms compliance pack + provenance
-        tar_name = f"frameflow-{preset}-{args.tag}.tar.gz"
+        tar_name = f"{prefix}-{preset}-{args.tag}.tar.gz"
         tar_path = out_dir / tar_name
-        bundle_prefix = f"frameflow-{preset}"
+        bundle_prefix = f"{prefix}-{preset}"
         with tarfile.open(tar_path, "w:gz") as tf:
             for fname in ("graph.json", "model.json", "model.bin"):
                 tf.add(exp_dir / fname, arcname=f"{bundle_prefix}/{fname}")
@@ -117,7 +122,7 @@ def main() -> None:
 
         packaged.append({
             "preset": preset,
-            "model_name": manifest["meta"].get("model", f"FrameFlow-{preset}"),
+            "model_name": manifest["meta"].get("model", f"GameFI-{preset}"),
             "train_step": manifest["meta"].get("train_step", 0),
             "n_params": manifest["meta"].get("n_params", 0),
             "bin_bytes": (exp_dir / "model.bin").stat().st_size,
@@ -157,7 +162,10 @@ def main() -> None:
     ]
     for item in packaged:
         m = item["metrics"] or {}
-        if "val_psnr" in m:
+        if "val_gain_db" in m:
+            psnr_str = f"{m['val_psnr']:.2f} dB (bilinear {m.get('val_bilinear_psnr', 0):.2f} dB, +{m['val_gain_db']:.2f} dB)"
+            hud_str = "UI + SYNLA + OpenMedia"
+        elif "val_psnr" in m:
             psnr_str = f"{m['val_psnr']:.2f} dB ({m.get('val_psnr_t05', 0):.2f} / {m.get('val_psnr_arb', 0):.2f})"
             hud_str = f"{m.get('val_hud_mad255', 0):.2f}/255"
         elif "psnr" in m:

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # Additional Terms: see LICENSE-ADDITIONAL_TERMS-zh-CN.md (v1.6.7-r4)
-"""Exporter for FrameFlow models -> (graph.json, model.json, model.bin).
+"""Exporter for GameFI models -> (graph.json, model.json, model.bin) in FrameFlow format_version=1.
 
 Produces format_version=1 artifacts compatible with both:
   1. Apache-2.0 FlyHigh WebGPU runtime (`FhEngine.loadModel(graph, manifest, weights)`)
@@ -161,7 +161,7 @@ def export_model(
     train_step: int = 0,
     stem: str = "model",
 ) -> dict:
-    """Export FrameFlowNet to `(graph.json, <stem>.json, <stem>.bin)` (f16 little-endian)."""
+    """Export GameFINet / FrameFlowNet to `(graph.json, <stem>.json, <stem>.bin)` (f16 little-endian)."""
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     cfg = model.cfg

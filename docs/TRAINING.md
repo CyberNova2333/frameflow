@@ -1,6 +1,6 @@
 # FrameFlow 训练与制品发布指南（CNB 48GB GPU / GitHub Actions / 本地 GPU）
 
-本文档说明如何从零训练 100% 自主知识产权的 **GNU AGPLv3 + 附加条款（v1.6.7-r4）自训权重**（`FrameFlow-Std` 775K 参数与蒸馏版 `FrameFlow-Lite` 222K 参数），并**免配任何跨平台密钥**，直接将打包后的权重及五份许可合规文本发布为各平台原生制品（**CNB OCI 制品库** / **GitHub Actions Artifact**），需要公开发版时再按需发到 **GitHub Release**。
+本文档说明如何从零训练 100% 自主知识产权的 **GNU AGPLv3 + 附加条款（v1.6.7-r4）自训权重**（插帧模型 `GameFI-Std` 775K 参数与蒸馏版 `GameFI-Lite` 222K 参数；2× 超分模型见 `scripts/train_sr.py`），并**免配任何跨平台密钥**，直接将打包后的权重及五份许可合规文本发布为各平台原生制品（**CNB OCI 制品库** / **GitHub Actions Artifact**），需要公开发版时再按需发到 **GitHub Release**。
 
 ---
 
@@ -26,7 +26,7 @@
      - `starter`（~727 MB：*Big Buck Bunny 60fps* + *Tears of Steel 720p*，CC-BY 3.0，快速出第一版）
      - `full`（在 `starter` 基础上增加 *Sintel 1080p* + Xiph/SVT 4 组 50/59.94fps 实拍序列，运动覆盖更全）
      - `synthetic`（零下载快速冒烟验证）
-   - **`TRAIN_PRESETS`**：默认 `both`（先训 `FrameFlow-Std`，再用冻结教师蒸馏 `FrameFlow-Lite`）。
+   - **`TRAIN_PRESETS`**：默认 `both`（先训 `GameFI-Std`，再用冻结教师蒸馏 `GameFI-Lite`）。
    - **`STD_STEPS` / `LITE_STEPS` / `BATCH_SIZE`**：默认 `100000` / `50000` / `32`（48GB 显存可轻松跑 `batch=32`）。
    - **`ARTIFACT_TAG`**：例如 `weights-v0.1.0`；流水线会通过 `oras push` 直接推送至 CNB OCI 制品库，并同步更新 `:latest`。
    - **`ALSO_PUBLISH_RELEASE`**：默认 `false`（仅发 OCI 制品）；如需同时在 CNB Release 页面点鼠标下载附件，可切换为 `true`。
@@ -87,10 +87,10 @@ make data-starter
 # make data-local
 # train-std / train-lite 会自动以 75% 开源通用 + 25% 本地素材的比例加权混训！
 
-# 2. 训练 FrameFlow-Std（支持断点续训与 Ctrl+C 优雅存盘）
+# 2. 训练 GameFI-Std（支持断点续训与 Ctrl+C 优雅存盘）
 make train-std
 
-# 3. 从 FrameFlow-Std 蒸馏 FrameFlow-Lite
+# 3. 从 GameFI-Std 蒸馏 GameFI-Lite
 make train-lite
 
 # 4. 打包权重与 SHA-256 校验和，并直接发布到 GitHub Release（需已登录 gh）
@@ -117,6 +117,6 @@ bash scripts/publish_github_release.sh weights-v0.1.0 dist CyberNova2333/framefl
 
 每次发布的 GitHub / CNB Release 包含以下文件：
 
-- `frameflow-std-<tag>.tar.gz` / `frameflow-lite-<tag>.tar.gz`：完整压缩包（含 `graph.json`、`model.json`、`model.bin`、五份许可合规文本 `LICENSE` / `LICENSE-ADDITIONAL_TERMS-{zh-CN,en}.md` / `IMPLEMENTATION-GUIDE.zh-en.md` / `ASSETS_LICENSES.md`、`DATA_PROVENANCE.json`、`metrics.jsonl`）
-- `frameflow-std-{graph.json,model.json,model.bin}`、`frameflow-lite-{graph.json,model.json,model.bin}`：可直接供前端 / CDN 单文件下载的未压缩权重
+- `gamefi-std-<tag>.tar.gz` / `gamefi-lite-<tag>.tar.gz`：完整压缩包（含 `graph.json`、`model.json`、`model.bin`、五份许可合规文本 `LICENSE` / `LICENSE-ADDITIONAL_TERMS-{zh-CN,en}.md` / `IMPLEMENTATION-GUIDE.zh-en.md` / `ASSETS_LICENSES.md`、`DATA_PROVENANCE.json`、`metrics.jsonl`）
+- `gamefi-std-{graph.json,model.json,model.bin}`、`gamefi-lite-{graph.json,model.json,model.bin}`：可直接供前端 / CDN 单文件下载的未压缩权重
 - `SHA256SUMS.txt`：全部文件 SHA-256 校验和

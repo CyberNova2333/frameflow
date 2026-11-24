@@ -613,6 +613,55 @@ void main() {
 }
 `;
 
+// Full-resolution 2x Super-Resolution fused render pass (bilinear baseline + PixelShuffle delta)
+const FS_RENDER_SR = `#version 300 es
+precision highp float;
+precision highp int;
+precision highp sampler2D;
+precision highp sampler2DArray;
+uniform sampler2D uSrc;
+uniform sampler2DArray uDelta;
+uniform ivec2 uSrcSize;
+uniform ivec2 uOutSize;
+uniform int uFlipSrcY;
+out vec4 o0;
+
+vec3 fetchSrc(int x, int y) {
+  int cx = clamp(x, 0, uSrcSize.x - 1);
+  int cy = clamp(y, 0, uSrcSize.y - 1);
+  if (uFlipSrcY != 0) cy = (uSrcSize.y - 1) - cy;
+  return texelFetch(uSrc, ivec2(cx, cy), 0).rgb;
+}
+
+float pickSub(vec4 v, int sub) {
+  if (sub == 0) return v.x;
+  if (sub == 1) return v.y;
+  if (sub == 2) return v.z;
+  return v.w;
+}
+
+void main() {
+  ivec2 op = ivec2(gl_FragCoord.xy);
+  float fx = (float(op.x) + 0.5) * (float(uSrcSize.x) / float(uOutSize.x)) - 0.5;
+  float fy = (float(op.y) + 0.5) * (float(uSrcSize.y) / float(uOutSize.y)) - 0.5;
+  int x0 = int(floor(fx));
+  int y0 = int(floor(fy));
+  float wx = fx - float(x0);
+  float wy = fy - float(y0);
+  vec3 base = mix(
+    mix(fetchSrc(x0, y0), fetchSrc(x0 + 1, y0), wx),
+    mix(fetchSrc(x0, y0 + 1), fetchSrc(x0 + 1, y0 + 1), wx),
+    wy
+  );
+  ivec2 lrp = ivec2(min(op.x >> 1, uSrcSize.x - 1), min(op.y >> 1, uSrcSize.y - 1));
+  int sub = (op.y & 1) * 2 + (op.x & 1);
+  float db = pickSub(texelFetch(uDelta, ivec3(lrp, 0), 0), sub);
+  float dg = pickSub(texelFetch(uDelta, ivec3(lrp, 1), 0), sub);
+  float dr = pickSub(texelFetch(uDelta, ivec3(lrp, 2), 0), sub);
+  o0 = vec4(clamp(base + vec3(dr, dg, db), vec3(0.0), vec3(1.0)), 1.0);
+}
+`;
+
 // Blit top-down RGB texture to screen canvas (flips Y for display)
 const FS_BLIT = `#version 300 es
 precision highp float;
@@ -623,6 +672,18 @@ out vec4 o0;
 void main() {
   vec3 c = texture(uTex, vec2(vUv.x, 1.0 - vUv.y)).rgb;
   o0 = vec4(c, 1.0);
+}
+`;
+
+// Resample top-down RGB texture into an FBO target preserving top-down memory layout
+const FS_COPY = `#version 300 es
+precision highp float;
+precision highp sampler2D;
+uniform sampler2D uTex;
+in vec2 vUv;
+out vec4 o0;
+void main() {
+  o0 = vec4(texture(uTex, vUv).rgb, 1.0);
 }
 `;
 
@@ -792,7 +853,9 @@ export class WebGL2Engine {
       convex: createProgram(gl, VS_QUAD, FS_CONVEX),
       blendW: createProgram(gl, VS_QUAD, FS_BLEND_W),
       render: createProgram(gl, VS_QUAD, FS_RENDER),
+      renderSr: createProgram(gl, VS_QUAD, FS_RENDER_SR),
       blit: createProgram(gl, VS_QUAD, FS_BLIT),
+      copy: createProgram(gl, VS_QUAD, FS_COPY),
     };
     this.models = new Set();
   }
@@ -905,18 +968,22 @@ class WebGL2Session {
     this.model = model;
     this.width = options.width;
     this.height = options.height;
+    this.isSr = model.data.meta.task === 'sr';
+    this.scale = this.isSr ? (model.data.meta.scale || 2) : 1;
     const internal = options.internal;
     let iw = this.width;
     let ih = this.height;
     if (Array.isArray(internal)) {
       [iw, ih] = internal;
-    } else if (internal === 'auto' && Math.max(this.width, this.height) > 640) {
+    } else if (!this.isSr && internal === 'auto' && Math.max(this.width, this.height) > 640) {
       const s = 288 / this.height;
       iw = align32(Math.round(this.width * s));
       ih = align32(Math.round(this.height * s));
     }
-    this.workW = align32(iw);
-    this.workH = align32(ih);
+    this.workW = this.isSr ? iw : align32(iw);
+    this.workH = this.isSr ? ih : align32(ih);
+    this.outW = this.width * this.scale;
+    this.outH = this.height * this.scale;
     this.k = options.k ?? model.data.meta.default_K ?? 1;
     this.stillGuard = options.stillGuard !== false;
     const samp = options.sampling || 'model';
@@ -964,7 +1031,7 @@ class WebGL2Session {
 
   addOutput() {
     const slot = this.outputs.length;
-    this.outputs.push(createTex2D(this.gl, this.width, this.height, this.gl.RGBA8, this.gl.LINEAR));
+    this.outputs.push(createTex2D(this.gl, this.outW, this.outH, this.gl.RGBA8, this.gl.LINEAR));
     return slot;
   }
 
@@ -986,14 +1053,41 @@ class WebGL2Session {
     const gl = this.gl;
     const entry = this.inputs[slot];
     entry.externalTex = null;
-    gl.bindTexture(gl.TEXTURE_2D, entry.texObj.tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0);
     if (source instanceof Uint8Array || source instanceof Uint8ClampedArray) {
+      gl.bindTexture(gl.TEXTURE_2D, entry.texObj.tex);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.width, this.height, gl.RGBA, gl.UNSIGNED_BYTE, source);
-    } else {
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      return;
     }
+    const srcW = source.videoWidth || source.width || this.width;
+    const srcH = source.videoHeight || source.height || this.height;
+    if (srcW === this.width && srcH === this.height) {
+      gl.bindTexture(gl.TEXTURE_2D, entry.texObj.tex);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      return;
+    }
+    if (!entry.srcTexObj || entry.srcTexObj.w !== srcW || entry.srcTexObj.h !== srcH) {
+      if (entry.srcTexObj) gl.deleteTexture(entry.srcTexObj.tex);
+      entry.srcTexObj = createTex2D(gl, srcW, srcH, gl.RGBA8, gl.LINEAR);
+    }
+    gl.bindTexture(gl.TEXTURE_2D, entry.srcTexObj.tex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source);
+
+    const P = this.engine.programs.copy;
+    gl.disable(gl.BLEND);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.engine.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, entry.texObj.tex, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.viewport(0, 0, this.width, this.height);
+    gl.useProgram(P.prog);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, entry.srcTexObj.tex);
+    gl.uniform1i(P.u('uTex'), 0);
+    this._drawQuad();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
   _bindLayer(texObj, layer) {
@@ -1395,6 +1489,39 @@ class WebGL2Session {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 
+  /** Run 2x super-resolution on `srcSlot` and store result into `outputs[outSlot]`. */
+  upscale(srcSlot = 0, outSlot = 0) {
+    if (!this.isSr) throw new Error('upscale() requires a super-resolution model');
+    const gl = this.gl;
+    gl.disable(gl.BLEND);
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.SCISSOR_TEST);
+    this._ingestInput(srcSlot, 'A');
+    for (const step of this.plan.pairSteps) {
+      if (step.op === 'render_sr') continue;
+      this._execStep(step, 0.5);
+    }
+    const deltaTex = this.tensors.get(this.plan.finalIds.delta_lr);
+    const outTex = this.outputs[outSlot];
+    const P = this.engine.programs.renderSr;
+    gl.useProgram(P.prog);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.inputTexture(srcSlot));
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, deltaTex.tex);
+    gl.uniform1i(P.u('uSrc'), 0);
+    gl.uniform1i(P.u('uDelta'), 1);
+    gl.uniform2i(P.u('uSrcSize'), this.width, this.height);
+    gl.uniform2i(P.u('uOutSize'), this.outW, this.outH);
+    gl.uniform1i(P.u('uFlipSrcY'), this.flipSrcY ? 1 : 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.engine.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, outTex.tex, 0);
+    gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+    gl.viewport(0, 0, this.outW, this.outH);
+    this._drawQuad();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
   /** Present an input slot or output slot onto the engine's WebGL2 display canvas. */
   present(frame) {
     const gl = this.gl;
@@ -1413,10 +1540,10 @@ class WebGL2Session {
   async readRgba(outSlot = 0) {
     const gl = this.gl;
     const outTex = this.outputs[outSlot];
-    const pixels = new Uint8Array(this.width * this.height * 4);
+    const pixels = new Uint8Array(this.outW * this.outH * 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.engine.fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, outTex.tex, 0);
-    gl.readPixels(0, 0, this.width, this.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    gl.readPixels(0, 0, this.outW, this.outH, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return pixels;
   }
@@ -1430,7 +1557,10 @@ class WebGL2Session {
     for (const t of this.tensors.values()) gl.deleteTexture(t.tex);
     this.tensors.clear();
     if (this.convexWtTex) gl.deleteTexture(this.convexWtTex.tex);
-    for (const inp of this.inputs) gl.deleteTexture(inp.texObj.tex);
+    for (const inp of this.inputs) {
+      gl.deleteTexture(inp.texObj.tex);
+      if (inp.srcTexObj) gl.deleteTexture(inp.srcTexObj.tex);
+    }
     for (const out of this.outputs) gl.deleteTexture(out.tex);
     this.inputs = [];
     this.outputs = [];
