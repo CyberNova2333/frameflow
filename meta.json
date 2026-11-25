@@ -12,7 +12,8 @@
   "category": "media-engine",
   "featured": false,
   "repository": "https://github.com/CyberNova2333/frameflow",
-  "docsUrl": "https://cybernova2333.github.io/frameflow/",
+  "homepage": "https://frameflow.cbnv.me",
+  "docsUrl": "https://frameflow.cbnv.me/docs/",
   "license": "AGPL-3.0-only",
   "primaryLanguage": "Python",
   "techStack": [

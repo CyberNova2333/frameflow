@@ -4,7 +4,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPLv3-blue.svg" alt="License: AGPL-3.0" /></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/Python-3.11%2B-3776ab.svg" alt="Python 3.11+" /></a>
   <a href="package.json"><img src="https://img.shields.io/badge/Runtime-WebGPU%20%2F%20WebGL2-0ea5e9.svg" alt="Runtime: WebGPU / WebGL2" /></a>
-  <a href="https://cybernova2333.github.io/frameflow/en/"><img src="https://img.shields.io/badge/Docs-GitHub%20Pages-0ea5e9.svg" alt="Docs" /></a>
+  <a href="https://frameflow.cbnv.me/en/"><img src="https://img.shields.io/badge/Docs-frameflow.cbnv.me-0ea5e9.svg" alt="Docs" /></a>
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://cybernova2333.github.io/frameflow/en/docs/">Online Docs</a> · <a href="docs-site/en/api-reference/index.md">API &amp; Format Reference</a> · <a href="repo-docs/README.md">Source Guide (ZH)</a> · <a href="https://github.com/CyberNova2333/frameflow/releases">Pre-trained Releases</a>
+  <a href="https://frameflow.cbnv.me/en/docs/">Online Docs</a> · <a href="docs-site/en/api-reference/index.md">API &amp; Format Reference</a> · <a href="repo-docs/README.md">Source Guide (ZH)</a> · <a href="https://github.com/CyberNova2333/frameflow/releases">Pre-trained Releases</a>
 </p>
 
 **FrameFlow** is a cross-browser neural video enhancement workflow suite built for web browsers and web emulators such as PVSSPW and PPSSPW. It encompasses two model families — **GameFI** (optical-flow frame interpolation) and **GameSR** (real-time 2× super-resolution) — running via a **compact unified graph format (`graph.json` + `model.json` + `model.bin`)** on a **zero-dependency, zero-WASM WebGPU / WebGL2 dual-backend ES module runtime**.

@@ -4,7 +4,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPLv3-blue.svg" alt="License: AGPL-3.0" /></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/Python-3.11%2B-3776ab.svg" alt="Python 3.11+" /></a>
   <a href="package.json"><img src="https://img.shields.io/badge/Runtime-WebGPU%20%2F%20WebGL2-0ea5e9.svg" alt="Runtime: WebGPU / WebGL2" /></a>
-  <a href="https://cybernova2333.github.io/frameflow/"><img src="https://img.shields.io/badge/Docs-GitHub%20Pages-0ea5e9.svg" alt="Docs" /></a>
+  <a href="https://frameflow.cbnv.me/docs/"><img src="https://img.shields.io/badge/Docs-frameflow.cbnv.me-0ea5e9.svg" alt="Docs" /></a>
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <a href="https://cybernova2333.github.io/frameflow/docs/">在线文档站</a> · <a href="docs-site/api-reference/index.md">API 与格式参考</a> · <a href="repo-docs/README.md">源码指南</a> · <a href="https://github.com/CyberNova2333/frameflow/releases">Release 权重下载</a>
+  <a href="https://frameflow.cbnv.me/docs/">在线文档站</a> · <a href="docs-site/api-reference/index.md">API 与格式参考</a> · <a href="repo-docs/README.md">源码指南</a> · <a href="https://github.com/CyberNova2333/frameflow/releases">Release 权重下载</a>
 </p>
 
 **FrameFlow** 是面向浏览器与网页模拟器（如 PVSSPW、PPSSPW）的跨浏览器实时画面工作流套件，旗下包含 **GameFI**（光流 AI 插帧）与 **GameSR**（2× AI 实时超分）两个模型家族，采用 **统一紧凑权重格式（`graph.json` + `model.json` + `model.bin`）** 与 **零依赖、零 WASM 的 WebGPU / WebGL2 双后端自动降级运行时**。
