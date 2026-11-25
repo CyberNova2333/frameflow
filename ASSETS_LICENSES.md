@@ -6,8 +6,8 @@
 **开发、维护或联合推出主体：** `CyberNova`  
 **上游仓库地址：** `https://github.com/CyberNova2333/frameflow`  
 **所对应的仓库版本及发行物：** `main` 分支初始完整版本（v0.1.0，涵盖 PyTorch 训练/导出套件、浏览器双后端运行时与双端 CI/训练流水线）  
-**记录覆盖范围及尚未核实部分：** 已核实本仓库全部自研源码与文档文件（`frameflow/`、`runtime/`、`scripts/`、`tests/`、`docs/`、`.github/`、`.cnb/`、`.cnb.yml`、`Makefile`、`package.json`、`pyproject.toml`）。本仓库不含任何打包内嵌的第三方代码快照、预训练二进制权重或闭源资产。尚未核实或明确排除在本仓库许可范围之外的内容：训练期由 `scripts/prepare_data.py` 按需从外部下载的第三方开放许可视频媒体、用户在本地 `data/raw_local/` 中自行提供的录屏素材、以及训练环境安装的外部 Python/FFmpeg 运行时依赖包。  
-**清单最后更新日期：** `2026-11-23`  
+**记录覆盖范围及尚未核实部分：** 已核实本仓库全部自研源码、文档与文档站静态资产（`frameflow/`、`runtime/`、`scripts/`、`tests/`、`docs/`、`docs-site/`、`repo-docs/`、`.github/`、`.cnb/`、`.cnb.yml`、`Makefile`、`package.json`、`pyproject.toml`），包括 `docs-site/.vitepress/theme/vendor/animejs/`（MIT v4.5.0）与自托管字体（SIL OFL 1.1）。尚未核实或明确排除在本仓库许可范围之外的内容：训练期由 `scripts/prepare_data.py` 按需从外部下载的第三方开放许可视频媒体、用户在本地 `data/raw_local/` 中自行提供的录屏素材、以及训练环境安装的外部 Python/FFmpeg 运行时依赖包。  
+**清单最后更新日期：** `2026-11-25`  
 **配套附加条款：** [中文完整文本](./LICENSE-ADDITIONAL_TERMS-zh-CN.md)；[英文参考译文](./LICENSE-ADDITIONAL_TERMS-en.md)；[工程实施指南](./IMPLEMENTATION-GUIDE.zh-en.md)
 
 > **填写状态：本清单已依据本仓库实际文件、Git 提交记录与依赖清单核实填写。** 四个分区的排列与配套附加条款 v1.6.7-r4 第 3.2、7.1 款一致；本清单如实记录已核实范围与未覆盖范围，不扩大或缩减任何上游有效许可证授予的权利，也不以列名方式向第三方材料追加限制。
@@ -75,6 +75,7 @@
 | `C-05`；Xiph.org / SVT Derf's Test Media（`720p50_*`、`720p5994_*`） | 外部公开测试视频序列（不随仓库分发，由 `scripts/prepare_data.py` 按需下载） | `scripts/prepare_data.py` URL 清单；训练打包时记录于 `DATA_PROVENANCE.json` | https://media.xiph.org/video/derf/ | Sveriges Television AB (SVT) / Xiph.org | 开放研究与分发测试序列，仅按需下载至本地忽略目录 |
 | `C-06`；FlyHigh Engine WebGPU（可选外部对照参考） | 外部可选验证对照（**未随本仓库分发或内嵌任何代码或权重**） | `scripts/verify_parity.py` / `scripts/verify_parity.mjs` 通过命令行路径参数可选加载本地外部目录作数值对齐测试 | 外部独立项目（代码为 Apache-2.0；其自带权重为 CC BY-NC 4.0，明确禁止引入本仓库） | FlyHigh Engine 作者 | 本仓库 `runtime/` 与 `frameflow/` 均为独立从零编写，不含其源码、WASM 或 CC BY-NC 权重 |
 | `C-07`；SYNLA-Dataset v1（`Dataset_Color`，不含 `SYNLA-Plus`） | 外部程序化动漫/线条合成数据集（不随仓库分发，由 `scripts/prepare_sr_data.py` 按需下载至被 `.gitignore` 忽略的 `data/`） | `scripts/prepare_sr_data.py`；训练打包时记录于 `DATA_PROVENANCE.json` | `https://github.com/bloc97/SYNLA-Dataset`（主分支 `Dataset_Color`，2,224 张纯粹程序化合成 PNG） | bloc97（MIT） | 已明确剔除含 DIV2K/网络抓取帧的 `SYNLA-Plus`，仅使用纯程序化合成的 MIT 子集 `Dataset_Color` 训练 `GameSR-2x` |
+| `C-08`；Anime.js 4.5.0 | 第三方内嵌脚本（静态复制，仅文档站动效使用） | `docs-site/.vitepress/theme/vendor/animejs/` | https://github.com/juliangarnier/anime（v4.5.0） | Julian Garnier（`Copyright (c) 2025 Julian Garnier`） | 仅随独立 `docs-site/` 构建分发，完整 MIT 原文见 `docs-site/.vitepress/theme/vendor/animejs/LICENSE.md` |
 
 ### 3.2 原始许可、本地修改与组合边界
 
@@ -87,6 +88,7 @@
 | `C-05` | Xiph.org / SVT 公开研究测试媒体条款（见 `media.xiph.org/video/derf/`） | 无视频二次分发，仅本地按需下载用于训练 | 外部数据集；随发行包 `DATA_PROVENANCE.json` 保留来源记录 | `[附加条款：不适用（遵循原上游许可证）]` |
 | `C-06` | Apache-2.0（仅代码；本仓库未引入其代码或权重） | 未引入 | 仅作为开发者本机可选对齐脚本的外部参照路径 | `[附加条款：不适用（遵循原上游许可证）]` |
 | `C-07` | MIT（bloc97/SYNLA-Dataset `Dataset_Color` 原仓库 `LICENSE`） | 无原始图片二次分发，仅本地按需下载用于训练 | 外部数据集；随发行包 `DATA_PROVENANCE.json` 保留 MIT 来源署名 | `[附加条款：不适用（遵循原上游许可证）]` |
+| `C-08` | MIT（`docs-site/.vitepress/theme/vendor/animejs/LICENSE.md`） | 无本地源码修改 | 仅随独立文档站分发，与 AGPL-3.0-only 兼容 | `[附加条款：不适用（遵循原上游许可证）]` |
 
 ### 3.3 需保留的许可、NOTICE 与版权声明索引
 
@@ -104,3 +106,5 @@
 | --- | --- | --- | --- | --- | --- |
 | `A-01`；FrameFlow 系列与模型档位标识（`FrameFlow`、`GameFI`、`GameFI-Std`、`GameFI-Lite`、`GameSR`、`GameSR-2x`、`GameSR-Std`、`GameSR-Lite`） | 见 `README.md`、`package.json`、`pyproject.toml`、`frameflow/config.py`、`frameflow/sr_config.py` | CyberNova（`P-01`） | 依据 `LICENSE-ADDITIONAL_TERMS-zh-CN.md` 第五条与第八条管理（不创设法律未赋予的注册商标排他权） | 是（项目文字标识）；下游二次分发或修改版本可依第八条更名并须如实区分来源 | 禁止冒充官方发布或虚构官方背书，具体规则见附加条款第五条与第八条 |
 | `A-02`；本机合成 UI 训练图所用系统字体（`Noto Sans CJK`、`DejaVu Sans`） | 仅训练期由 `scripts/prepare_sr_data.py` 调用系统字体栅格化为像素训练样本；仓库及权重包内不含字体文件 | Google & Adobe（SIL OFL 1.1） / DejaVu Fonts Team（Bitstream Vera 宽松许可） | SIL OFL 1.1 / Bitstream Vera Font License（随操作系统字体包安装） | 未随仓库或权重打包 | 仅用于离线生成游戏 HUD/对话文字超分训练样本 |
+| `A-03`；IBM Plex Sans（文档站自托管字体） | `docs-site/.vitepress/theme/fonts/ibm-plex-sans-latin-*.woff2`；来源：IBM Plex Sans | IBM Corp.（见同目录 `IBM-Plex-Sans-LICENSE.txt`） | SIL Open Font License 1.1（`docs-site/.vitepress/theme/fonts/IBM-Plex-Sans-LICENSE.txt`） | 否（非项目标识）；仅随 `docs-site` 构建静态分发；可自由替换 | 按 SIL OFL 1.1 随文档站浏览分发；未修改字形 |
+| `A-04`；JetBrains Mono（文档站自托管字体） | `docs-site/.vitepress/theme/fonts/jetbrains-mono-latin-500-normal.woff2`；来源：JetBrains Mono | The JetBrains Mono Project Authors（见同目录 `LICENSE-jetbrains-mono.txt`） | SIL Open Font License 1.1（`docs-site/.vitepress/theme/fonts/LICENSE-jetbrains-mono.txt`） | 否（非项目标识）；仅随 `docs-site` 构建静态分发；可自由替换 | 按 SIL OFL 1.1 随文档站代码块渲染使用；未修改字形 |

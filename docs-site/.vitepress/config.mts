@@ -5,18 +5,18 @@ const guideRouteMap: Record<string, string> = {
   'README.md': 'docs/architecture',
   'walkthroughs/one-real-run.md': 'docs/walkthrough',
   'code-map.md': 'docs/code-map',
-  'modules/dual-backend-runtime.md': 'docs/backends',
-  'modules/gamefi-and-gamesr-models.md': 'docs/models',
+  'modules/gamefi-and-gamesr-models.md': 'docs/contracts',
+  'modules/dual-backend-runtime.md': 'docs/performance',
   'modules/training-and-release-pipeline.md': 'docs/training',
   'glossary.md': 'docs/architecture',
   'references/source-evidence.md': 'docs/architecture',
   'references/quality-review.md': 'docs/architecture',
-  'change-log.md': 'docs/architecture',
+  'change-log.md': 'docs/decisions',
 }
 
 export default defineConfig({
   title: 'FrameFlow',
-  description: '跨浏览器光流插帧（GameFI）与 2× 超分（GameSR）训练、导出及 WebGPU/WebGL2 运行时套件。',
+  description: '跨浏览器 WebGPU/WebGL2 光流插帧（GameFI）与 2× 超分（GameSR）训练推理套件。',
   cleanUrls: true,
   lastUpdated: false,
   markdown: {
@@ -32,34 +32,36 @@ export default defineConfig({
         nav: [
           { text: '首页', link: '/' },
           { text: '起步与接入', link: '/docs/' },
-          { text: '模型与训练', link: '/docs/models' },
+          { text: '契约与调优', link: '/docs/contracts' },
           { text: '架构与源码', link: '/docs/architecture' },
-          { text: 'API 与格式', link: '/api-reference/' },
+          { text: 'API 与组件', link: '/api-reference/' },
         ],
         sidebar: {
           '/docs/': [
             {
-              text: '起步与模拟器集成',
+              text: '起步与集成训练',
               items: [
                 { text: '概览与能力边界', link: '/docs/' },
                 { text: '浏览器与模拟器接入', link: '/docs/integration' },
                 { text: '训练、蒸馏与双端发版', link: '/docs/training' },
-                { text: 'API 与模型格式参考', link: '/api-reference/' },
+                { text: 'API 与组件参考（Apifox 视图）', link: '/api-reference/' },
+                { text: '接入与运行排错 FAQ', link: '/docs/troubleshooting' },
               ],
             },
             {
-              text: '模型结构与双后端',
+              text: '契约与性能调优',
               items: [
-                { text: 'GameFI 与 GameSR 模型及格式', link: '/docs/models' },
-                { text: 'WebGPU 与 WebGL2 双后端运行时', link: '/docs/backends' },
+                { text: 'GameFI / GameSR 契约与格式', link: '/docs/contracts' },
+                { text: '双后端计算与节拍器调优', link: '/docs/performance' },
               ],
             },
             {
               text: '原理与源码导览',
               items: [
-                { text: '架构全景与源码指南总览', link: '/docs/architecture' },
+                { text: '架构全景与交互图谱', link: '/docs/architecture' },
                 { text: '一次真实运行走查（源码）', link: '/docs/walkthrough' },
                 { text: '代码地图（按职责定位）', link: '/docs/code-map' },
+                { text: '工程决策与合规边界', link: '/docs/decisions' },
               ],
             },
           ],
@@ -76,34 +78,36 @@ export default defineConfig({
         nav: [
           { text: 'Home', link: '/en/' },
           { text: 'Getting Started', link: '/en/docs/' },
-          { text: 'Models & Training', link: '/en/docs/models' },
+          { text: 'Contracts & Perf', link: '/en/docs/contracts' },
           { text: 'Architecture', link: '/en/docs/architecture' },
-          { text: 'API & Format', link: '/en/api-reference/' },
+          { text: 'API & Components', link: '/en/api-reference/' },
         ],
         sidebar: {
           '/en/docs/': [
             {
-              text: 'Getting Started & Integration',
+              text: 'Getting Started & Training',
               items: [
                 { text: 'Overview & Scope Boundaries', link: '/en/docs/' },
                 { text: 'Browser & Emulator Integration', link: '/en/docs/integration' },
                 { text: 'Training, Distillation & Releases', link: '/en/docs/training' },
-                { text: 'API & Format Reference', link: '/en/api-reference/' },
+                { text: 'API & Component Reference', link: '/en/api-reference/' },
+                { text: 'Integration & Runtime FAQ', link: '/en/docs/troubleshooting' },
               ],
             },
             {
-              text: 'Models & Dual Backends',
+              text: 'Contracts & Performance',
               items: [
-                { text: 'GameFI & GameSR Specifications', link: '/en/docs/models' },
-                { text: 'WebGPU & WebGL2 Runtime', link: '/en/docs/backends' },
+                { text: 'GameFI / GameSR Contracts & Format', link: '/en/docs/contracts' },
+                { text: 'Dual-Backend & Pacer Tuning', link: '/en/docs/performance' },
               ],
             },
             {
-              text: 'Architecture & Source Guide',
+              text: 'Architecture & Decisions',
               items: [
-                { text: 'Architecture & Source Guide Index', link: '/en/docs/architecture' },
+                { text: 'Architecture & Interactive Diagram', link: '/en/docs/architecture' },
                 { text: 'End-to-End Walkthrough', link: '/en/docs/walkthrough' },
                 { text: 'Code Map by Responsibility', link: '/en/docs/code-map' },
+                { text: 'Decisions & Compliance ADRs', link: '/en/docs/decisions' },
               ],
             },
           ],

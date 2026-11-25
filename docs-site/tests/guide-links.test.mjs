@@ -7,13 +7,13 @@ const routeMap = {
   'README.md': 'docs/architecture',
   'walkthroughs/one-real-run.md': 'docs/walkthrough',
   'code-map.md': 'docs/code-map',
-  'modules/dual-backend-runtime.md': 'docs/backends',
-  'modules/gamefi-and-gamesr-models.md': 'docs/models',
+  'modules/gamefi-and-gamesr-models.md': 'docs/contracts',
+  'modules/dual-backend-runtime.md': 'docs/performance',
   'modules/training-and-release-pipeline.md': 'docs/training',
   'glossary.md': 'docs/architecture',
   'references/source-evidence.md': 'docs/architecture',
   'references/quality-review.md': 'docs/architecture',
-  'change-log.md': 'docs/architecture',
+  'change-log.md': 'docs/decisions',
 }
 
 test('guideLinks rewrites repo-docs links and marks repo source paths', async () => {

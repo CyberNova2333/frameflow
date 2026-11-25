@@ -1,30 +1,34 @@
-# API & Model Format Reference
+---
+layout: page
+sidebar: false
+title: API & Model Format Reference
+description: Reference for FrameFlow probeCapabilities, createFrameFlow, FrameFlowSession, FrameFlowPacer, format_version=1 schema, and release packaging CLI.
+---
 
-Reference aligned with `runtime/index.js`, `runtime/loader.js`, `runtime/pacer.js`, and `runtime/types.d.ts`.
+<script setup lang="ts">
+import { apiSpecEn } from '../../.vitepress/data/api-spec'
+</script>
 
-## Top-Level Runtime Entrypoints (`runtime/index.js`)
+<ApiExplorer :spec="apiSpecEn">
 
-| Function | Signature / Options | Behavior |
-| --- | --- | --- |
-| `probeCapabilities(options?)` | `{ powerPreference?, gl?, canvas? }` | Returns `{ supported, recommended: 'webgpu' \| 'webgl2' \| null, webgpu, webgl2 }` without allocating session textures |
-| `createFrameFlow(options?)` | `{ backend?: 'auto' \| 'webgpu' \| 'webgl2', device?, gl?, canvas?, precision?: 'auto' \| 'f16' \| 'f32', powerPreference? }` | Defaults to `webgpu` when `device` is passed, `webgl2` when `gl` is passed, or throws when neither float backend is supported |
-| `loadModelFromUrl(engine, baseUrl, stem?)` | Directory URL + optional stem (`'model'`) | Fetches `graph.json`, `{stem}.json`, and `{stem}.bin` concurrently into `engine.loadModel()` |
+### Capability Probing & Engine Creation (`createFrameFlow`) {#create-frameflow}
 
-## Session & Pacer API (`FrameFlowSession` / `FrameFlowPacer`)
+Selects WebGPU Compute (`shader-f16` with `f32` fallback) first and degrades automatically to WebGL2 `RGBA16F` + MRT; shares `{ device }` or `{ gl }` zero-copy handles without CPU/WASM fallback.
 
-| Method | Parameters | Notes & Constraints |
-| --- | --- | --- |
-| `engine.createSession(model, opts)` | `{ width, height, internal?: 'frame' \| 'auto' \| [w, h], k?, stillGuard?, sampling?, useFilm?, useRefine?, flipSrcY? }` | Pads interpolation dimensions with `align32()`; SR sessions output fixed `2×` size |
-| `setExternalInputTexture(slot, tex)` | `slot`, same-device `GPUTexture` or `WebGLTexture` | Zero-copy binding without host RAM round-trips |
-| `pushFrame(slot, source)` | Typed array or DOM canvas/bitmap/video source | Uploads source frame when external textures are not bound |
-| `pair(slotA, slotB)` / `mid(t?, outSlot?)` | `t ∈ (0, 1)` | Runs feature & coarse stages once per pair, then arbitrary phase synthesis per `mid()` |
-| `upscale(srcSlot?, outSlot?)` | `GameSR` 2× sessions only | Renders `(2*width, 2*height)` output texture in `outSlot` |
-| `outputTexture(slot?)` | Output slot index | Returns GPU texture handle for downstream rendering or scaling |
-| `readRgba(outSlot?)` | `Promise<Uint8Array>` | CPU readback intended strictly for tests/screenshots — never hot-loop pacing |
-| `FrameFlowPacer` | `{ factor?: 2 \| 3, maxBufferMs?: 120 }` | Tracks `emaIntervalMs` over `4–200 ms` deltas; drops queued frames beyond `factor + 2` |
+### Zero-Copy Session (`FrameFlowSession`) {#frameflow-session}
 
-## Artifact Format Contract (`format_version = 1`)
+Compiles static `pairSteps`/`midSteps` ahead of inference, binds external GPU textures cleanly, locks `GameSR` to `2×`, and reserves `readRgba()` strictly for offline verification.
 
-- `graph.json`: Static topological `ops` list (`repeat`, `conv`, `sad_volume`, `film`, `render_sr`).
-- `model.json`: `{ meta: { model, task, format_version: 1, n_params, cfg }, tensors: { [name]: { shape, offset } } }`.
-- `model.bin`: Contiguous little-endian IEEE-754 `binary16` byte stream (even byte length enforced by `parseModel()`).
+### Non-Blocking 2× / 3× Pacer (`FrameFlowPacer`) {#frameflow-pacer}
+
+Tracks 4–200 ms EMA deltas, emits `t=0.5` or `t=1/3, 2/3` mid tasks, and drops stalled entries past `factor + 2`.
+
+### Unified `format_version = 1` Schema {#model-format-v1}
+
+Stores `graph.json`, `model.json`, and little-endian `binary16` `model.bin` with multiples-of-4 channels enforced across both families.
+
+### Packaging CLI (`package_release.py`) {#package-release-cli}
+
+Bundles model exports, 5 compliance texts, `DATA_PROVENANCE.json`, and `SHA256SUMS.txt` across CNB OCI and GitHub Releases.
+
+</ApiExplorer>

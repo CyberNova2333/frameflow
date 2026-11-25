@@ -1,20 +1,22 @@
-# Architecture & Source Guide
+# Architecture & Interactive Diagram
 
-FrameFlow separates model authoring/training (`frameflow/`, PyTorch) from zero-dependency browser execution (`runtime/`, ES modules) using one shared `format_version = 1` contract (`graph.json` + `model.json` + `model.bin`).
+FrameFlow decouples Python authoring/export (`frameflow/`) from zero-dependency browser execution (`runtime/`) across one `format_version = 1` interchange specification.
 
-## Repository Layout & Source Guides
+<DiagramFrame
+  src="/diagrams/frameflow-architecture.html"
+  title="FrameFlow Export, Dual-Backend Runtime & Host Zero-Copy Architecture"
+  aspect="940 / 330"
+  new-tab-label="Open Fullscreen ↗"
+/>
 
-- **End-to-End Flow**: [Walkthrough](/en/docs/walkthrough) traces export -> `probeCapabilities()` / `createFrameFlow()` -> `parseModel()` / `compilePlan()` -> `pair()` / `mid()` / `upscale()` -> `FrameFlowPacer` and capability rejection boundaries.
-- **Source Map**: [Code Map](/en/docs/code-map) lists owning files and verification targets across `frameflow/`, `runtime/`, `scripts/`, and `tests/`.
-- **Chinese Source-Truth Ledger**: Full reader-facing source guides live in [`repo-docs/`](https://github.com/CyberNova2333/frameflow/tree/main/repo-docs) (`references/source-evidence.md`, `references/quality-review.md`, `change-log.md`), anchored at verified Git revisions.
+## Deep-Dive Links & Verification
 
-## Verification Commands
+- [End-to-End Walkthrough](/en/docs/walkthrough): Five-stage execution lifecycle and failure gates.
+- [Code Map](/en/docs/code-map): Directory and symbol ownership across `frameflow/`, `runtime/`, `scripts/`, and `tests/`.
+- [Decisions & Compliance ADRs](/en/docs/decisions): Key engineering tradeoffs and audit scope.
+- Chinese source-truth guides live in [`repo-docs/`](https://github.com/CyberNova2333/frameflow/tree/main/repo-docs).
 
 ```sh
-# Fast CPU unit tests (PyTorch + Node loader/pacer)
-make test
-
-# Headless Edge 157 GPU parity verification (requires Vulkan/WebGPU adapter)
-VK_DRIVER_FILES=/usr/share/vulkan/icd.d/intel_icd.json .venv/bin/python scripts/verify_backends.py
-VK_DRIVER_FILES=/usr/share/vulkan/icd.d/intel_icd.json .venv/bin/python scripts/verify_sr_backends.py
+make test            # Fast CPU Python + Node loader/pacer unit suite
+make verify-runtime  # Headless Edge 157 dual-backend parity vs PyTorch (requires GPU/Vulkan)
 ```

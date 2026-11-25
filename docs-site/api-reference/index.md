@@ -1,35 +1,34 @@
-# API 与模型格式参考
+---
+layout: page
+sidebar: false
+title: API 与格式参考
+description: FrameFlow 运行时 probeCapabilities、createFrameFlow、FrameFlowSession、FrameFlowPacer、format_version=1 产物与打包发版 CLI 参考。
+---
 
-本页依据 `runtime/index.js`、`runtime/loader.js`、`runtime/pacer.js` 与 `runtime/types.d.ts` 整理运行时接口与 `format_version = 1` 模型产物规范。
+<script setup lang="ts">
+import { apiSpecZh } from '../.vitepress/data/api-spec'
+</script>
 
-## 运行时顶层函数 (`runtime/index.js`)
+<ApiExplorer :spec="apiSpecZh">
 
-| 函数名 | 签名与参数 | 返回值与说明 |
-| --- | --- | --- |
-| `probeCapabilities(options?)` | `{ powerPreference?: 'high-performance' \| 'low-power', gl?, canvas? }` | 返回 `{ supported, recommended: 'webgpu' \| 'webgl2' \| null, webgpu, webgl2 }`，不分配会话显存 |
-| `createFrameFlow(options?)` | `{ backend?: 'auto' \| 'webgpu' \| 'webgl2', device?, gl?, canvas?, precision?: 'auto' \| 'f16' \| 'f32', powerPreference? }` | 传入 `device` 默认走 `webgpu`、传入 `gl` 默认走 `webgl2`；`auto` 依次尝试并均不支持时抛错 |
-| `loadModelFromUrl(engine, baseUrl, stem?)` | `baseUrl` 为目录 URL，`stem` 默认 `'model'` | 并行 `fetch` `graph.json`、`{stem}.json` 与 `{stem}.bin` 后交给 `engine.loadModel` |
+### 能力探测与双后端创建 (`createFrameFlow`) {#create-frameflow}
 
-## 引擎与会话方法 (`FrameFlowEngine` / `FrameFlowSession`)
+优先尝试 WebGPU Compute（支持 `shader-f16` 自动启用，否则降回 `f32`）并无缝回退到 WebGL2 `RGBA16F` + MRT；支持共享外部 `{ device }`（PVSSPW）或 `{ gl }`（PPSSPW），均不支持时显式拒绝，不做 CPU/WASM 软推理。
 
-| 接口 / 方法 | 关键参数说明 | 行为边界 |
-| --- | --- | --- |
-| `engine.createSession(model, options)` | `{ width, height, internal?: 'frame' \| 'auto' \| [w, h], k?, stillGuard?, sampling?, useFilm?, useRefine?, flipSrcY? }` | 插帧内部宽高通过 `align32()` 向上对齐到 32 倍数；超分会话直接基于输入尺寸执行 2× 输出 |
-| `session.setExternalInputTexture(slot, tex)` | `slot` 整数槽位，`tex` 为同设备 `GPUTexture` 或 `WebGLTexture` | 直接绑定外部渲染纹理，零拷贝跳过 JS 像素上传 |
-| `session.pushFrame(slot, source)` | 支持 `Uint8Array` / `HTMLCanvasElement` / `OffscreenCanvas` / `ImageBitmap` / `HTMLVideoElement` | 当不使用外部共享纹理时从宿主上传帧画面 |
-| `session.pair(slotA, slotB)` & `session.mid(t?, outSlot?)` | `t ∈ (0, 1)`，默认 `0.5` | 先由 `pair` 完成一次编码与粗估计，再按需多次调用 `mid(t)` 生成任意相位帧 |
-| `session.upscale(srcSlot?, outSlot?)` | `srcSlot=0, outSlot=0` | `GameSR` 专用：将输入提升为固定的 `(2*width, 2*height)` 分辨率 |
-| `session.outputTexture(slot?)` | 输出槽位编号 | 获取生成的 GPU 纹理，供模拟器交换链或后续超分/渲染直接采样 |
-| `session.readRgba(outSlot?)` | `Promise<Uint8Array>` | 显式回读 RGBA 像素；**仅用于测试或截图，禁止放入实时游玩热循环** |
+### 零拷贝纹理会话 (`FrameFlowSession`) {#frameflow-session}
 
-## 无阻塞帧节拍器 (`FrameFlowPacer`)
+静态展开计算图为 `pairSteps` 与 `midSteps` 避免运行期重复分配；支持 `setExternalInputTexture` 零拷贝对接，`GameSR` 严格固定 2× 输出，`readRgba()` 严禁放进热循环。
 
-- `new FrameFlowPacer({ factor?: 2 | 3, maxBufferMs?: number })`：默认 `maxBufferMs = 120`。
-- `onSourceFrame(slot, nowMs)`：基于 `4–200 ms` 区间动态估算 `emaIntervalMs`，返回需排队的 `{ t, dueMs, outSlot }` 任务；若队列超过 `factor + 2` 自动丢弃最旧项并递增 `stats.dropped`。
-- `tick(nowMs)`：返回下一待展示项或状态，始终免去阻塞式 GPU 回读。
+### 无阻塞帧节拍器 (`FrameFlowPacer`) {#frameflow-pacer}
 
-## 紧凑模型产物约定 (`format_version = 1`)
+按 4–200 ms 源帧滑动平均值调度 `2×`（`t=0.5`）与 `3×`（`t=1/3, 2/3`）生成任务，超出 `factor + 2` 主动淘汰陈旧项。
 
-- `graph.json`：含 `meta` 与 `ops` 计算步骤数组；插帧含 `interpolate`、`conv`、`sad_volume`、`film_mlp` 与 `render_pix` 等算子，超分以 `render_sr`（`scale: 2`）收尾。
-- `model.json`：`{ meta: { model, task, format_version: 1, n_params, cfg }, tensors: { name: { shape, offset } } }`。
-- `model.bin`：按 `offset` 紧邻存放的小端 IEEE-754 `binary16` 字节流（总字节数必为偶数）。
+### 统一三文件产物约定 (`format_version = 1`) {#model-format-v1}
+
+由 `graph.json`、`model.json` 与小端序 IEEE-754 `binary16` `model.bin` 组成；全部隐层通道数限制为 4 的倍数。
+
+### 数据制备与发行包打包 CLI (`package_release.py`) {#package-release-cli}
+
+随权重归档附带五份许可文书、`DATA_PROVENANCE.json`、`metrics.jsonl` 与 `SHA256SUMS.txt` 发布至 GitHub Release 与 CNB OCI。
+
+</ApiExplorer>
