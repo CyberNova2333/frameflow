@@ -27,9 +27,7 @@
     "super-resolution",
     "optical-flow",
     "webgpu",
-    "webgl2",
-    "browser-ai",
-    "emulator"
+    "webgl2"
   ],
   "summary": {
     "zh": "面向浏览器与网页模拟器（如 PVSSPW、PPSSPW）的帧流工作流套件（含 GameFI 光流插帧与 GameSR 2× 超分），提供训练、蒸馏、导出与零依赖 WebGPU/WebGL2 双后端运行时。",
@@ -54,15 +52,15 @@
     "make verify-runtime"
   ],
   "roadmap": {
-    "stage": "早期开发",
-    "stageEn": "Active Development",
+    "stage": "已发版 · 持续优化",
+    "stageEn": "Released · Active Iteration",
     "milestone": {
-      "zh": "已完成模型训练/蒸馏/导出框架、WebGPU+WebGL2 双后端数值对齐及云端 GPU 训练流水线，待完成全量权重训练并发布至 GitHub Release。",
-      "en": "Training/distillation/export stack, verified WebGPU+WebGL2 backends, and cloud GPU release pipelines are complete; full model weights training and GitHub Release publication pending."
+      "zh": "已完成 GameFI（Std/Lite）与 GameSR（Std/Lite）训练、双后端数值对齐、Release 权重发布，并已接入 PVSSPW 与 PPSSPW 模拟器。",
+      "en": "GameFI (Std/Lite) and GameSR (Std/Lite) models are trained, parity-verified across WebGPU and WebGL2, published via GitHub Releases, and integrated into PVSSPW and PPSSPW."
     }
   },
   "additionalTermsConsent": {
     "CyberNova": true
   },
-  "updatedAt": "2026-11-23"
+  "updatedAt": "2026-11-25"
 }
