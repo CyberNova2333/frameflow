@@ -12,6 +12,7 @@
   "category": "media-engine",
   "featured": false,
   "repository": "https://github.com/CyberNova2333/frameflow",
+  "docsUrl": "https://cybernova2333.github.io/frameflow/",
   "license": "AGPL-3.0-only",
   "primaryLanguage": "Python",
   "techStack": [
@@ -49,7 +50,8 @@
   },
   "quickStart": [
     "make test",
-    "make verify-runtime"
+    "make verify-runtime",
+    "pnpm --dir docs-site run docs:dev"
   ],
   "roadmap": {
     "stage": "已发版 · 持续优化",
